@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.ShopMapper">
+
+    <resultMap type="Shop" id="ShopResult">
+        <id property="id" column="id" />
+        <result property="shopCode" column="shop_code" />
+        <result property="name" column="name" />
+        <result property="image" column="image" />
+        <result property="phone" column="phone" />
+        <result property="province" column="province" />
+        <result property="city" column="city" />
+        <result property="district" column="district" />
+        <result property="address" column="address" />
+        <result property="longitude" column="longitude" />
+        <result property="latitude" column="latitude" />
+        <result property="openTime" column="open_time" />
+        <result property="closeTime" column="close_time" />
+        <result property="preorderMinMinutes" column="preorder_min_minutes" />
+        <result property="preorderMaxDays" column="preorder_max_days" />
+        <result property="makeLeadMinutes" column="make_lead_minutes" />
+        <result property="status" column="status" />
+        <result property="notice" column="notice" />
+        <result property="packFee" column="pack_fee" />
+        <result property="sortOrder" column="sort_order" />
+        <result property="delFlag" column="del_flag" />
+        <result property="createTime" column="create_time" />
+        <result property="updateTime" column="update_time" />
+    </resultMap>
+
+    <sql id="selectShopVo">
+        select id, shop_code, name, image, phone, province, city, district, address,
+               longitude, latitude, open_time, close_time, preorder_min_minutes,
+               preorder_max_days, make_lead_minutes, status, notice, pack_fee,
+               sort_order, del_flag, create_time, update_time
+        from shop
+    </sql>
+
+    <select id="selectShopList" parameterType="Shop" resultMap="ShopResult">
+        <include refid="selectShopVo"/>
+        where del_flag = 0
+        <if test="name != null and name != ''">
+            and name like concat('%', #{name}, '%')
+        </if>
+        <if test="phone != null and phone != ''">
+            and phone like concat('%', #{phone}, '%')
+        </if>
+        <if test="status != null">
+            and status = #{status}
+        </if>
+        order by sort_order asc, id desc
+    </select>
+
+    <select id="selectShopById" parameterType="Long" resultMap="ShopResult">
+        <include refid="selectShopVo"/>
+        where id = #{id} and del_flag = 0
+    </select>
+
+    <select id="selectShopByCode" parameterType="String" resultMap="ShopResult">
+        <include refid="selectShopVo"/>
+        where shop_code = #{shopCode}
+        limit 1
+    </select>
+
+    <insert id="insertShop" parameterType="Shop" useGeneratedKeys="true" keyProperty="id">
+        insert into shop (
+            shop_code, name, image, phone, province, city, district, address,
+            longitude, latitude, open_time, close_time, preorder_min_minutes,
+            preorder_max_days, make_lead_minutes, status, notice, pack_fee,
+            sort_order, del_flag, create_time
+        ) values (
+            #{shopCode}, #{name}, #{image}, #{phone}, #{province}, #{city}, #{district}, #{address},
+            #{longitude}, #{latitude}, #{openTime}, #{closeTime}, #{preorderMinMinutes},
+            #{preorderMaxDays}, #{makeLeadMinutes}, #{status}, #{notice}, #{packFee},
+            #{sortOrder}, #{delFlag}, sysdate()
+        )
+    </insert>
+
+    <update id="updateShop" parameterType="Shop">
+        update shop
+        <set>
+            <if test="name != null and name != ''">name = #{name},</if>
+            <if test="image != null">image = #{image},</if>
+            <if test="phone != null and phone != ''">phone = #{phone},</if>
+            <if test="province != null">province = #{province},</if>
+            <if test="city != null">city = #{city},</if>
+            <if test="district != null">district = #{district},</if>
+            <if test="address != null">address = #{address},</if>
+            <if test="longitude != null">longitude = #{longitude},</if>
+            <if test="latitude != null">latitude = #{latitude},</if>
+            <if test="openTime != null">open_time = #{openTime},</if>
+            <if test="closeTime != null">close_time = #{closeTime},</if>
+            <if test="preorderMinMinutes != null">preorder_min_minutes = #{preorderMinMinutes},</if>
+            <if test="preorderMaxDays != null">preorder_max_days = #{preorderMaxDays},</if>
+            <if test="makeLeadMinutes != null">make_lead_minutes = #{makeLeadMinutes},</if>
+            <if test="status != null">status = #{status},</if>
+            <if test="notice != null">notice = #{notice},</if>
+            <if test="packFee != null">pack_fee = #{packFee},</if>
+            <if test="sortOrder != null">sort_order = #{sortOrder},</if>
+            update_time = sysdate()
+        </set>
+        where id = #{id} and del_flag = 0
+    </update>
+
+    <update id="updateShopStatus">
+        update shop
+        set status = #{status}, update_time = sysdate()
+        where id = #{id} and del_flag = 0
+    </update>
+
+    <update id="deleteShopById" parameterType="Long">
+        update shop
+        set del_flag = 1, update_time = sysdate()
+        where id = #{id} and del_flag = 0
+    </update>
+
+    <select id="countActiveOrdersByShopId" parameterType="Long" resultType="int">
+        select count(1)
+        from biz_order
+        where shop_id = #{shopId}
+          and order_status in (0, 1, 2, 3)
+    </select>
+
+</mapper>

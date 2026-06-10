@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.StaffShopMapper">
+
+    <resultMap type="StaffShop" id="StaffShopResult">
+        <id property="id" column="id" />
+        <result property="userId" column="user_id" />
+        <result property="shopId" column="shop_id" />
+        <result property="isDefault" column="is_default" />
+        <result property="role" column="role" />
+        <result property="createTime" column="create_time" />
+        <result property="userName" column="user_name" />
+        <result property="nickName" column="nick_name" />
+        <result property="phonenumber" column="phonenumber" />
+        <result property="userStatus" column="user_status" />
+    </resultMap>
+
+    <sql id="selectStaffShopVo">
+        select ss.id, ss.user_id, ss.shop_id, ss.is_default, ss.role, ss.create_time,
+               u.user_name, u.nick_name, u.phonenumber, u.status as user_status
+        from staff_shop ss
+        inner join sys_user u on u.user_id = ss.user_id and u.del_flag = '0'
+    </sql>
+
+    <select id="selectStaffByShopId" parameterType="Long" resultMap="StaffShopResult">
+        <include refid="selectStaffShopVo"/>
+        where ss.shop_id = #{shopId}
+        order by ss.is_default desc, ss.id asc
+    </select>
+
+    <select id="selectStaffShop" resultMap="StaffShopResult">
+        <include refid="selectStaffShopVo"/>
+        where ss.shop_id = #{shopId} and ss.user_id = #{userId}
+        limit 1
+    </select>
+
+    <select id="countShopsByUserId" parameterType="Long" resultType="int">
+        select count(1) from staff_shop where user_id = #{userId}
+    </select>
+
+    <insert id="insertStaffShop" parameterType="StaffShop" useGeneratedKeys="true" keyProperty="id">
+        insert into staff_shop (user_id, shop_id, is_default, role, create_time)
+        values (#{userId}, #{shopId}, #{isDefault}, #{role}, sysdate())
+    </insert>
+
+    <update id="updateStaffShop" parameterType="StaffShop">
+        update staff_shop
+        set is_default = #{isDefault}, role = #{role}
+        where id = #{id}
+    </update>
+
+    <update id="clearDefaultByUserId" parameterType="Long">
+        update staff_shop set is_default = 0 where user_id = #{userId} and is_default = 1
+    </update>
+
+    <delete id="deleteStaffShop">
+        delete from staff_shop where shop_id = #{shopId} and user_id = #{userId}
+    </delete>
+
+</mapper>

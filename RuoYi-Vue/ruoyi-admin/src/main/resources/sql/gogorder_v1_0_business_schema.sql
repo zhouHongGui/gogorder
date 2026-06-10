@@ -1,47 +1,10 @@
-# M01 - 数据库设计
+-- gogorder V1.0 business schema
+-- Source of truth: docs/M01-数据库设计.md and docs/M13-全局枚举与接口契约.md
+-- This script is intentionally non-destructive and can be executed repeatedly.
 
----
+SET NAMES utf8mb4;
 
-## 1. 概述
-
-定义 gogorder V1.0 全部数据库表结构。所有业务模块均依赖本模块的表结构。全局枚举和字段约定以 **M13** 为权威来源。
-
-**优先级**：🔴 最高
-
----
-
-## 2. ER 关系图
-
-```
-c_user ──1:N──▶ c_user_wechat
-c_user ──1:1──▶ c_user_balance
-c_user ──1:N──▶ balance_ledger
-c_user ──1:N──▶ biz_order
-
-shop ──1:N──▶ staff_shop ◀──N:1── sys_user(若依)
-shop ──1:N──▶ shop_product ◀──N:1── product
-shop ──1:N──▶ biz_order
-
-product ──1:N──▶ product_category ◀──N:1── category
-product ──1:N──▶ biz_order_item
-
-biz_order ──1:N──▶ biz_order_item
-biz_order ──1:1──▶ payment_ledger
-biz_order ──1:1──▶ refund_ledger
-
-spec_template ──1:N──▶ spec_option
-shop_product ──1:N──▶ stock_ledger
-c_user_balance ──1:N──▶ balance_ledger
-```
-
----
-
-## 3. 核心表详细设计
-
-### 3.1 C端用户 `c_user`
-
-```sql
-CREATE TABLE `c_user` (
+CREATE TABLE IF NOT EXISTS `c_user` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `phone` VARCHAR(11) NOT NULL COMMENT '手机号（唯一）',
   `nickname` VARCHAR(50) DEFAULT '',
@@ -52,14 +15,8 @@ CREATE TABLE `c_user` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_phone` (`phone`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='C端用户';
-```
 
-> `openid_mp` 移除；微信身份存入独立表 `c_user_wechat`。
-
-### 3.2 微信身份绑定 `c_user_wechat`
-
-```sql
-CREATE TABLE `c_user_wechat` (
+CREATE TABLE IF NOT EXISTS `c_user_wechat` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `user_id` BIGINT NOT NULL COMMENT 'c_user.id',
   `platform` VARCHAR(10) NOT NULL COMMENT 'MP=小程序 H5=公众号',
@@ -70,12 +27,8 @@ CREATE TABLE `c_user_wechat` (
   UNIQUE KEY `uk_platform_openid` (`platform`, `openid`),
   KEY `idx_user_id` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='微信身份绑定';
-```
 
-### 3.3 余额账户 `c_user_balance`
-
-```sql
-CREATE TABLE `c_user_balance` (
+CREATE TABLE IF NOT EXISTS `c_user_balance` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `user_id` BIGINT NOT NULL,
   `balance` INT NOT NULL DEFAULT 0 COMMENT '余额（分）',
@@ -85,12 +38,8 @@ CREATE TABLE `c_user_balance` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_user_id` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户余额账户';
-```
 
-### 3.4 余额流水 `balance_ledger`
-
-```sql
-CREATE TABLE `balance_ledger` (
+CREATE TABLE IF NOT EXISTS `balance_ledger` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `user_id` BIGINT NOT NULL,
   `type` VARCHAR(20) NOT NULL COMMENT 'RECHARGE/PAY/REFUND/ADJUST',
@@ -107,12 +56,8 @@ CREATE TABLE `balance_ledger` (
   KEY `idx_user_id` (`user_id`),
   KEY `idx_order_id` (`order_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='余额流水';
-```
 
-### 3.5 支付流水 `payment_ledger`
-
-```sql
-CREATE TABLE `payment_ledger` (
+CREATE TABLE IF NOT EXISTS `payment_ledger` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `order_id` BIGINT NOT NULL,
   `user_id` BIGINT NOT NULL,
@@ -122,15 +67,10 @@ CREATE TABLE `payment_ledger` (
   `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_idempotent` (`idempotent_key`),
-  UNIQUE KEY `uk_order_id` (`order_id`),
-  KEY `idx_order_id` (`order_id`)
+  UNIQUE KEY `uk_order_id` (`order_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='支付流水';
-```
 
-### 3.6 退款流水 `refund_ledger`
-
-```sql
-CREATE TABLE `refund_ledger` (
+CREATE TABLE IF NOT EXISTS `refund_ledger` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `order_id` BIGINT NOT NULL,
   `user_id` BIGINT NOT NULL,
@@ -140,15 +80,10 @@ CREATE TABLE `refund_ledger` (
   `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_idempotent` (`idempotent_key`),
-  UNIQUE KEY `uk_order_id` (`order_id`),
-  KEY `idx_order_id` (`order_id`)
+  UNIQUE KEY `uk_order_id` (`order_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='退款流水';
-```
 
-### 3.7 门店 `shop`
-
-```sql
-CREATE TABLE `shop` (
+CREATE TABLE IF NOT EXISTS `shop` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `shop_code` VARCHAR(20) NOT NULL,
   `name` VARCHAR(100) NOT NULL,
@@ -177,21 +112,15 @@ CREATE TABLE `shop` (
   KEY `idx_status_del` (`status`, `del_flag`),
   KEY `idx_location` (`longitude`, `latitude`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='门店（逻辑删除）';
-```
 
-**营业时间跨午夜**：`open_time = '18:00'`，`close_time = '02:00'` 表示下午6点到次日凌晨2点。
-
-**删除**：仅逻辑删除（`del_flag=1`），禁止物理删除。删除校验：无未完成订单即可删除。历史订单引用保留。
-
-### 3.8 员工-门店关联 `staff_shop`
-
-```sql
-CREATE TABLE `staff_shop` (
+CREATE TABLE IF NOT EXISTS `staff_shop` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `user_id` BIGINT NOT NULL COMMENT 'sys_user.id（若依用户）',
   `shop_id` BIGINT NOT NULL,
   `is_default` TINYINT DEFAULT 0 COMMENT '1=默认门店',
-  `default_user_id` BIGINT GENERATED ALWAYS AS (CASE WHEN `is_default` = 1 THEN `user_id` ELSE NULL END) STORED COMMENT '用于保证每个用户仅一个默认门店',
+  `default_user_id` BIGINT GENERATED ALWAYS AS (
+    CASE WHEN `is_default` = 1 THEN `user_id` ELSE NULL END
+  ) STORED COMMENT '用于保证每个用户仅一个默认门店',
   `role` VARCHAR(20) NOT NULL DEFAULT 'STAFF' COMMENT 'STAFF/MANAGER/ADMIN',
   `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
@@ -199,12 +128,8 @@ CREATE TABLE `staff_shop` (
   UNIQUE KEY `uk_user_default` (`default_user_id`),
   KEY `idx_shop_id` (`shop_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='员工-门店关联';
-```
 
-### 3.9 商品分类 `category`
-
-```sql
-CREATE TABLE `category` (
+CREATE TABLE IF NOT EXISTS `category` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `name` VARCHAR(50) NOT NULL,
   `sort_order` INT DEFAULT 0,
@@ -212,12 +137,8 @@ CREATE TABLE `category` (
   `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商品分类';
-```
 
-### 3.10 商品-分类关联 `product_category`
-
-```sql
-CREATE TABLE `product_category` (
+CREATE TABLE IF NOT EXISTS `product_category` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `product_id` BIGINT NOT NULL,
   `category_id` BIGINT NOT NULL,
@@ -226,12 +147,8 @@ CREATE TABLE `product_category` (
   UNIQUE KEY `uk_product_category` (`product_id`, `category_id`),
   KEY `idx_category_id` (`category_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商品多分类关联';
-```
 
-### 3.11 规格模板 `spec_template`
-
-```sql
-CREATE TABLE `spec_template` (
+CREATE TABLE IF NOT EXISTS `spec_template` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `name` VARCHAR(50) NOT NULL COMMENT '规格名（杯型/温度/甜度/加料）',
   `type` TINYINT NOT NULL COMMENT '1单选 2多选',
@@ -243,14 +160,8 @@ CREATE TABLE `spec_template` (
   `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='规格模板';
-```
 
-**注意**：规格选项从 `spec_template` 表的 JSON 字段拆分为独立的 `spec_option` 表，确保 optionId 全局唯一且不可变。
-
-### 3.12 规格选项 `spec_option`
-
-```sql
-CREATE TABLE `spec_option` (
+CREATE TABLE IF NOT EXISTS `spec_option` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `option_id` VARCHAR(32) NOT NULL COMMENT '全局唯一optionId（雪花ID/UUID）',
   `template_id` BIGINT NOT NULL COMMENT 'spec_template.id',
@@ -264,14 +175,8 @@ CREATE TABLE `spec_option` (
   UNIQUE KEY `uk_option_id` (`option_id`),
   KEY `idx_template_id` (`template_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='规格选项（optionId不可变）';
-```
 
-**规则**：`option_id` 生成后不可变。有历史订单引用时仅可标记禁用，不可删除。
-
-### 3.13 商品 `product`
-
-```sql
-CREATE TABLE `product` (
+CREATE TABLE IF NOT EXISTS `product` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `name` VARCHAR(100) NOT NULL,
   `image` VARCHAR(255) DEFAULT '',
@@ -287,13 +192,7 @@ CREATE TABLE `product` (
   KEY `idx_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商品库';
 
--- category_id 移除，改由 product_category 关联
-```
-
-### 3.14 门店商品 `shop_product`
-
-```sql
-CREATE TABLE `shop_product` (
+CREATE TABLE IF NOT EXISTS `shop_product` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `shop_id` BIGINT NOT NULL,
   `product_id` BIGINT NOT NULL,
@@ -307,13 +206,7 @@ CREATE TABLE `shop_product` (
   KEY `idx_shop_status` (`shop_id`, `status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='门店商品';
 
--- monthly_sales 移除，改为从订单表实时查询（近30天统计窗口）
-```
-
-### 3.15 库存流水 `stock_ledger`
-
-```sql
-CREATE TABLE `stock_ledger` (
+CREATE TABLE IF NOT EXISTS `stock_ledger` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `shop_product_id` BIGINT NOT NULL,
   `change_type` VARCHAR(10) NOT NULL COMMENT 'DEDUCT/RESTORE/ADJUST',
@@ -328,12 +221,8 @@ CREATE TABLE `stock_ledger` (
   UNIQUE KEY `uk_idempotent` (`idempotent_key`),
   KEY `idx_shop_product_id` (`shop_product_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='库存流水';
-```
 
-### 3.16 订单 `biz_order`
-
-```sql
-CREATE TABLE `biz_order` (
+CREATE TABLE IF NOT EXISTS `biz_order` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `order_no` VARCHAR(32) NOT NULL COMMENT '订单号',
   `submit_key` VARCHAR(64) NOT NULL COMMENT '客户端提交幂等键',
@@ -370,18 +259,8 @@ CREATE TABLE `biz_order` (
   KEY `idx_shop_scheduled_pickup` (`shop_id`, `scheduled_pickup_time`),
   KEY `idx_create_time` (`create_time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单';
-```
 
-> `pickup_token`、`pickup_display`、`pickup_date` 在支付成功时生成；即时单使用支付日期，预订单使用预约取餐日期。
->
-> `pay_transaction_id` 移除（余额支付无微信交易号）。
->
-> 文档中的“级联删除关联记录”均由业务服务在事务内删除；当前 V1.0 表结构不依赖数据库外键级联。
-
-### 3.17 订单明细 `biz_order_item`
-
-```sql
-CREATE TABLE `biz_order_item` (
+CREATE TABLE IF NOT EXISTS `biz_order_item` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `order_id` BIGINT NOT NULL,
   `product_id` BIGINT NOT NULL,
@@ -394,84 +273,3 @@ CREATE TABLE `biz_order_item` (
   PRIMARY KEY (`id`),
   KEY `idx_order_id` (`order_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单明细';
-```
-
----
-
-## 4. Redis 数据结构
-
-### 4.1 购物车
-
-```
-Key: cart:{userId}
-Type: Hash
-TTL: 604800s (7天)
-
-Fields:
-  shopId    → "1"
-  item:{cartItemId} → JSON of single item
-```
-
-单条 item JSON：
-```json
-{
-  "cartItemId": "uuid",
-  "productId": 10,
-  "productName": "多肉葡萄",
-  "image": "...",
-  "specs": {"1": {"optionId":"opt_001","label":"大杯","priceAdd":300}},
-  "unitPrice": 2300,
-  "quantity": 2,
-  "subtotal": 4600
-}
-```
-
-### 4.2 短信验证码
-
-```
-sms:code:{phone}  → TTL 300s
-sms:limit:{phone} → TTL 60s
-sms:daily:{phone} → TTL (当天剩余秒数)
-```
-
-### 4.3 取餐码流水号
-
-```
-pickup:seq:{shopId}:{pickupDate} → INCR，每日自动过期
-```
-
----
-
-## 5. 索引策略摘要
-
-| 表 | 关键索引 | 用途 |
-|----|----------|------|
-| c_user | `uk_phone` | 手机号登录 |
-| c_user_wechat | `uk_platform_openid` | 微信登录查询 |
-| balance_ledger | `uk_idempotent` | 余额变更幂等与审计 |
-| payment_ledger | `uk_idempotent` | 支付幂等 |
-| refund_ledger | `uk_idempotent` | 退款幂等 |
-| stock_ledger | `uk_idempotent` | 库存操作幂等 |
-| staff_shop | `uk_user_shop` | 员工-门店唯一 |
-| biz_order | `uk_user_submit_key` | 防止重复提交订单 |
-| biz_order | `uk_pickup_token` | 核销令牌唯一 |
-| biz_order | `uk_pickup_display (shop,pickup_date,code)` | 展示号防碰撞 |
-| shop | `idx_status_del` | 按状态+删除筛选 |
-
----
-
-## 6. 前置依赖
-- M00 - 系统架构
-
-## 7. 被依赖模块
-所有业务模块（M02-M12）
-
-## 8. 验收标准
-- [ ] 全部 17 张表创建成功，字段类型和注释正确
-- [ ] 所有唯一索引约束生效（特别是幂等键）
-- [ ] `biz_order` 三状态字段正常工作
-- [ ] `spec_option.option_id` 唯一约束生效
-- [ ] 逻辑删除 `del_flag` 查询正确
-- [ ] 余额/库存流水写入正常
-- [ ] 每个员工最多只有一个默认门店
-- [ ] 后台充值/调账记录操作人、备注和幂等键
