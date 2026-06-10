@@ -101,6 +101,18 @@ token:
   # 令牌有效期（默认30分钟）
   expireTime: 30
 
+# C端认证配置
+c-auth:
+  jwt:
+    secret: ${C_TOKEN_SECRET:${TOKEN_SECRET:change-this-token-secret}}
+    expire-days: 7
+  sms:
+    # 开发环境返回 mockCode；生产环境关闭后需接入真实短信服务
+    mock-enabled: ${C_SMS_MOCK_ENABLED:true}
+  wechat:
+    app-id: ${WECHAT_MINI_APP_ID:}
+    app-secret: ${WECHAT_MINI_APP_SECRET:}
+
 # MyBatis配置
 mybatis:
   # 搜索指定包别名

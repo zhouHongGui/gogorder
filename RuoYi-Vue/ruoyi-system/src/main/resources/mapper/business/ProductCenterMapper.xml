@@ -351,6 +351,68 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <foreach collection="list" item="id" open="(" separator="," close=")">#{id}</foreach>
     </delete>
 
+    <resultMap id="CProductResult" type="CProductView">
+        <id property="shopProductId" column="shop_product_id"/>
+        <result property="productId" column="product_id"/>
+        <result property="name" column="name"/>
+        <result property="image" column="image"/>
+        <result property="description" column="description"/>
+        <result property="price" column="effective_price"/>
+        <result property="stock" column="stock"/>
+        <result property="monthlySales" column="monthly_sales"/>
+        <result property="tagsJson" column="tags"/>
+        <result property="specTemplateIdsJson" column="spec_template_ids"/>
+    </resultMap>
+
+    <sql id="selectCProductVo">
+        select sp.id shop_product_id, p.id product_id, p.name, p.image, p.description,
+               coalesce(sp.price, p.base_price) effective_price, sp.stock, p.tags, p.spec_template_ids,
+               (
+                   select coalesce(sum(oi.quantity), 0)
+                   from biz_order_item oi
+                   inner join biz_order bo on bo.id = oi.order_id
+                   where oi.product_id = p.id
+                     and bo.shop_id = sp.shop_id
+                     and bo.pay_status = 1
+                     and bo.pay_time &gt;= date_sub(sysdate(), interval 30 day)
+               ) monthly_sales
+        from shop_product sp
+        inner join product p on p.id = sp.product_id and p.status = 1
+        inner join shop s on s.id = sp.shop_id and s.del_flag = 0
+    </sql>
+
+    <select id="selectCShopCategories" parameterType="Long" resultMap="CategoryResult">
+        select distinct c.id, c.name, c.sort_order, c.status, c.create_time
+        from category c
+        inner join product_category pc on pc.category_id = c.id
+        inner join product p on p.id = pc.product_id and p.status = 1
+        inner join shop_product sp on sp.product_id = p.id and sp.status = 1
+        inner join shop s on s.id = sp.shop_id and s.del_flag = 0
+        where sp.shop_id = #{shopId} and c.status = 1
+        order by c.sort_order asc, c.id asc
+    </select>
+
+    <select id="selectCShopProducts" resultMap="CProductResult">
+        <include refid="selectCProductVo"/>
+        where sp.shop_id = #{shopId} and sp.status = 1
+        <if test="categoryId != null">
+            and exists (
+                select 1 from product_category pc
+                where pc.product_id = p.id and pc.category_id = #{categoryId}
+            )
+        </if>
+        <if test="keyword != null and keyword != ''">
+            and (p.name like concat('%', #{keyword}, '%') or p.description like concat('%', #{keyword}, '%'))
+        </if>
+        order by sp.sort_order asc, sp.id desc
+    </select>
+
+    <select id="selectCShopProductDetail" resultMap="CProductResult">
+        <include refid="selectCProductVo"/>
+        where sp.shop_id = #{shopId} and p.id = #{productId} and sp.status = 1
+        limit 1
+    </select>
+
     <resultMap id="StockLedgerResult" type="StockLedger">
         <id property="id" column="id"/>
         <result property="shopProductId" column="shop_product_id"/>

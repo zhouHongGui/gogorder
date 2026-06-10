@@ -14,6 +14,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import com.ruoyi.common.config.GogorderConfig;
 import com.ruoyi.common.constant.Constants;
 import com.ruoyi.framework.interceptor.RepeatSubmitInterceptor;
+import com.ruoyi.framework.interceptor.CAuthInterceptor;
 
 /**
  * 通用配置
@@ -25,6 +26,9 @@ public class ResourcesConfig implements WebMvcConfigurer
 {
     @Autowired
     private RepeatSubmitInterceptor repeatSubmitInterceptor;
+
+    @Autowired
+    private CAuthInterceptor cAuthInterceptor;
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry)
@@ -45,6 +49,9 @@ public class ResourcesConfig implements WebMvcConfigurer
     @Override
     public void addInterceptors(InterceptorRegistry registry)
     {
+        registry.addInterceptor(cAuthInterceptor)
+                .addPathPatterns("/api/c/**")
+                .excludePathPatterns("/api/c/auth/**");
         registry.addInterceptor(repeatSubmitInterceptor).addPathPatterns("/**");
     }
 

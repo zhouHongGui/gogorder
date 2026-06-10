@@ -1,0 +1,26 @@
+{
+  "name": "gogorder",
+  "appid": "__UNI__GOGORDER",
+  "description": "gogorder 多门店点单 C端",
+  "versionName": "1.0.0",
+  "versionCode": "100",
+  "transformPx": false,
+  "h5": {
+    "title": "gogorder"
+  },
+  "mp-weixin": {
+    "appid": "",
+    "permission": {
+      "scope.userLocation": {
+        "desc": "用于查找附近门店并按距离排序"
+      }
+    },
+    "requiredPrivateInfos": [
+      "getLocation"
+    ],
+    "setting": {
+      "urlCheck": false
+    },
+    "usingComponents": true
+  }
+}

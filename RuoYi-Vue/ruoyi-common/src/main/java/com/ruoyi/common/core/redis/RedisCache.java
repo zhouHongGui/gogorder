@@ -50,6 +50,25 @@ public class RedisCache
     }
 
     /**
+     * 缓存基本对象，仅在键不存在时写入。
+     */
+    public <T> boolean setCacheObjectIfAbsent(final String key, final T value, final Integer timeout,
+            final TimeUnit timeUnit)
+    {
+        Boolean result = redisTemplate.opsForValue().setIfAbsent(key, value, timeout, timeUnit);
+        return Boolean.TRUE.equals(result);
+    }
+
+    /**
+     * 原子递增缓存值。
+     */
+    public long increment(final String key, final long delta)
+    {
+        Long result = redisTemplate.opsForValue().increment(key, delta);
+        return result == null ? 0L : result;
+    }
+
+    /**
      * 设置有效时间
      *
      * @param key Redis键

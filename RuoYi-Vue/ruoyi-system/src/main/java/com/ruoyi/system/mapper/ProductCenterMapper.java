@@ -8,6 +8,7 @@ import com.ruoyi.system.domain.ShopProduct;
 import com.ruoyi.system.domain.SpecOption;
 import com.ruoyi.system.domain.SpecTemplate;
 import com.ruoyi.system.domain.StockLedger;
+import com.ruoyi.system.domain.dto.CProductView;
 
 /**
  * 商品中心数据层
@@ -65,6 +66,11 @@ public interface ProductCenterMapper
     int deductShopProductStock(@Param("id") Long id, @Param("quantity") Integer quantity);
     int restoreShopProductStock(@Param("id") Long id, @Param("quantity") Integer quantity);
     int deleteShopProducts(List<Long> ids);
+
+    List<Category> selectCShopCategories(Long shopId);
+    List<CProductView> selectCShopProducts(@Param("shopId") Long shopId, @Param("categoryId") Long categoryId,
+            @Param("keyword") String keyword);
+    CProductView selectCShopProductDetail(@Param("shopId") Long shopId, @Param("productId") Long productId);
 
     StockLedger selectStockLedgerByKey(String idempotentKey);
     int insertStockLedger(StockLedger ledger);
