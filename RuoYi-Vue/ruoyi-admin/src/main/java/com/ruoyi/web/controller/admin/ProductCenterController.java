@@ -20,11 +20,11 @@ import com.ruoyi.common.core.page.TableDataInfo;
 import com.ruoyi.common.enums.BusinessType;
 import com.ruoyi.system.domain.Category;
 import com.ruoyi.system.domain.Product;
-import com.ruoyi.system.domain.ShopProduct;
 import com.ruoyi.system.domain.SpecOption;
 import com.ruoyi.system.domain.SpecTemplate;
 import com.ruoyi.system.domain.dto.ShopProductAssignRequest;
 import com.ruoyi.system.domain.dto.ShopProductBatchRemoveRequest;
+import com.ruoyi.system.domain.dto.ShopProductUpdateRequest;
 import com.ruoyi.system.domain.dto.StockAdjustRequest;
 import com.ruoyi.system.service.IProductCenterService;
 
@@ -193,10 +193,9 @@ public class ProductCenterController extends BaseController
     @PreAuthorize("@ss.hasPermi('admin:shop-product:edit')")
     @Log(title = "门店商品", businessType = BusinessType.UPDATE)
     @PutMapping("/shop-product/{id}")
-    public AjaxResult editShopProduct(@PathVariable Long id, @Validated @RequestBody ShopProduct shopProduct)
+    public AjaxResult editShopProduct(@PathVariable Long id, @Validated @RequestBody ShopProductUpdateRequest request)
     {
-        shopProduct.setId(id);
-        return toAjax(productCenterService.updateShopProduct(shopProduct));
+        return toAjax(productCenterService.updateShopProduct(id, request));
     }
 
     @PreAuthorize("@ss.hasPermi('admin:shop-product:stock')")

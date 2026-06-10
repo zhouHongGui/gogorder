@@ -225,13 +225,6 @@
                 <el-input-number v-model="form.sortOrder" :min="0" controls-position="right" style="width: 100%" />
               </el-form-item>
             </el-col>
-            <el-col :span="8">
-              <el-form-item label="状态" prop="status">
-                <el-select v-model="form.status" style="width: 100%">
-                  <el-option v-for="item in shopStatusOptions" :key="item.value" :label="item.label" :value="item.value" />
-                </el-select>
-              </el-form-item>
-            </el-col>
             <el-col :span="24">
               <el-form-item label="门店公告" prop="notice">
                 <el-input v-model="form.notice" type="textarea" :rows="3" maxlength="500" show-word-limit placeholder="请输入营业通知、取餐说明等信息" />
@@ -356,8 +349,7 @@ const data = reactive({
     preorderMaxDays: [{ required: true, message: "最长预约天数不能为空", trigger: "change" }],
     makeLeadMinutes: [{ required: true, message: "制作提前分钟数不能为空", trigger: "change" }],
     packFee: [{ required: true, message: "包装费不能为空", trigger: "change" }],
-    sortOrder: [{ required: true, message: "排序不能为空", trigger: "change" }],
-    status: [{ required: true, message: "状态不能为空", trigger: "change" }]
+    sortOrder: [{ required: true, message: "排序不能为空", trigger: "change" }]
   },
   staffRules: {
     userId: [{ required: true, message: "请选择员工", trigger: "change" }],
@@ -433,7 +425,8 @@ function handleUpdate(row) {
 function submitForm() {
   proxy.$refs.shopRef.validate(valid => {
     if (!valid) return
-    const action = form.value.id ? updateShop(form.value.id, form.value) : addShop(form.value)
+    const payload = form.value.id ? { ...form.value, shopCode: undefined, status: undefined } : form.value
+    const action = form.value.id ? updateShop(form.value.id, payload) : addShop(payload)
     action.then(() => {
       proxy.$modal.msgSuccess(form.value.id ? "修改成功" : "新增成功")
       open.value = false

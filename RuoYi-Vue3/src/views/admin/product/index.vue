@@ -305,7 +305,18 @@ function removeProduct(row) { proxy.$modal.confirm(`确认删除商品“${row.n
 
 function saveAssign() { assignShopProduct({ shopId: currentShopId.value, productIds: assignProductIds.value }).then(() => { assignOpen.value = false; assignProductIds.value = []; proxy.$modal.msgSuccess("分配完成"); loadShopProducts() }) }
 function openShopProduct(row) { replace(shopProductForm, { ...row }); shopProductOpen.value = true }
-function saveShopProduct() { updateShopProduct(shopProductForm.id, { price: shopProductForm.price, status: shopProductForm.status, sortOrder: shopProductForm.sortOrder }).then(() => { shopProductOpen.value = false; proxy.$modal.msgSuccess("保存成功"); loadShopProducts() }) }
+function saveShopProduct() {
+  updateShopProduct(shopProductForm.id, {
+    price: shopProductForm.price,
+    useBasePrice: shopProductForm.price == null,
+    status: shopProductForm.status,
+    sortOrder: shopProductForm.sortOrder
+  }).then(() => {
+    shopProductOpen.value = false
+    proxy.$modal.msgSuccess("保存成功")
+    loadShopProducts()
+  })
+}
 function openStock(row) { stockShopProductId.value = row.id; replace(stockForm, { stock: row.stock, reason: "" }); stockOpen.value = true }
 function saveStock() { adjustShopProductStock(stockShopProductId.value, { requestId: crypto.randomUUID(), stock: stockForm.stock, reason: stockForm.reason }).then(() => { stockOpen.value = false; proxy.$modal.msgSuccess("库存调整成功"); loadShopProducts() }) }
 function batchRemoveShopProduct() { const ids = selectedShopProducts.value.map(v => v.id); proxy.$modal.confirm(`确认移除选中的 ${ids.length} 个门店商品吗？`).then(() => removeShopProducts(ids)).then(() => { proxy.$modal.msgSuccess("移除成功"); loadShopProducts() }).catch(() => {}) }

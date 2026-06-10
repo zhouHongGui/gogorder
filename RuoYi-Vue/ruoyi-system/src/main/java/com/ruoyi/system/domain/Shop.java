@@ -20,7 +20,6 @@ public class Shop extends BaseEntity
 
     private Long id;
 
-    @NotBlank(message = "门店编号不能为空")
     @Size(max = 20, message = "门店编号长度不能超过20个字符")
     private String shopCode;
 

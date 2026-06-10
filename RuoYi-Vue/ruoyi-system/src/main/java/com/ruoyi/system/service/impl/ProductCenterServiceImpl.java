@@ -4,7 +4,10 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Objects;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.alibaba.fastjson2.JSON;
@@ -18,6 +21,7 @@ import com.ruoyi.system.domain.SpecOption;
 import com.ruoyi.system.domain.SpecTemplate;
 import com.ruoyi.system.domain.StockLedger;
 import com.ruoyi.system.domain.dto.ShopProductAssignRequest;
+import com.ruoyi.system.domain.dto.ShopProductUpdateRequest;
 import com.ruoyi.system.domain.dto.StockAdjustRequest;
 import com.ruoyi.system.mapper.ProductCenterMapper;
 import com.ruoyi.system.service.IProductCenterService;
@@ -28,6 +32,8 @@ import com.ruoyi.system.service.IProductCenterService;
 @Service
 public class ProductCenterServiceImpl implements IProductCenterService
 {
+    private static final Logger log = LoggerFactory.getLogger(ProductCenterServiceImpl.class);
+
     @Autowired
     private ProductCenterMapper productCenterMapper;
 
@@ -78,9 +84,10 @@ public class ProductCenterServiceImpl implements IProductCenterService
     }
 
     @Override
+    @Transactional
     public int updateSpecTemplate(SpecTemplate template)
     {
-        SpecTemplate current = requireSpecTemplate(template.getId());
+        SpecTemplate current = requireSpecTemplateForUpdate(template.getId());
         template.setSortOrder(StringUtils.nvl(template.getSortOrder(), current.getSortOrder()));
         template.setStatus(StringUtils.nvl(template.getStatus(), current.getStatus()));
         validateSpecTemplate(template);
@@ -116,6 +123,7 @@ public class ProductCenterServiceImpl implements IProductCenterService
     }
 
     @Override
+    @Transactional
     public int insertSpecOption(SpecOption option)
     {
         option.setOptionId(IdUtils.fastSimpleUUID());
@@ -128,6 +136,7 @@ public class ProductCenterServiceImpl implements IProductCenterService
     }
 
     @Override
+    @Transactional
     public int updateSpecOption(SpecOption option)
     {
         SpecOption current = requireSpecOption(option.getId());
@@ -169,9 +178,7 @@ public class ProductCenterServiceImpl implements IProductCenterService
         product.setCategories(productCenterMapper.selectCategoriesByProductId(id));
         if (StringUtils.isNotEmpty(product.getSpecTemplateIds()))
         {
-            List<SpecTemplate> templates = productCenterMapper.selectSpecTemplateList(new SpecTemplate());
-            templates.removeIf(item -> !product.getSpecTemplateIds().contains(item.getId()));
-            product.setSpecTemplates(templates);
+            product.setSpecTemplates(productCenterMapper.selectSpecTemplatesByIds(product.getSpecTemplateIds()));
         }
         else
         {
@@ -239,17 +246,39 @@ public class ProductCenterServiceImpl implements IProductCenterService
         {
             throw new ServiceException("存在无效商品，无法分配");
         }
-        return productCenterMapper.assignShopProducts(request.getShopId(), productIds);
+        List<Long> assignedProductIds = productCenterMapper.selectAssignedProductIds(request.getShopId(), productIds);
+        int rows = productCenterMapper.assignShopProducts(request.getShopId(), productIds);
+        if (StringUtils.isNotEmpty(assignedProductIds))
+        {
+            log.info("门店商品分配跳过已存在商品，shopId={}，productIds={}", request.getShopId(), assignedProductIds);
+        }
+        if (rows + assignedProductIds.size() < productIds.size())
+        {
+            log.info("门店商品分配期间存在并发重复，shopId={}，请求数量={}，新增数量={}",
+                    request.getShopId(), productIds.size(), rows);
+        }
+        return rows;
     }
 
     @Override
-    public int updateShopProduct(ShopProduct shopProduct)
+    public int updateShopProduct(Long id, ShopProductUpdateRequest request)
     {
-        ShopProduct current = requireShopProduct(shopProduct.getId());
-        shopProduct.setPrice(shopProduct.getPrice());
-        shopProduct.setStatus(StringUtils.nvl(shopProduct.getStatus(), current.getStatus()));
-        shopProduct.setSortOrder(StringUtils.nvl(shopProduct.getSortOrder(), current.getSortOrder()));
-        return productCenterMapper.updateShopProduct(shopProduct);
+        ShopProduct current = requireShopProduct(id);
+        if (Boolean.TRUE.equals(request.getUseBasePrice()) && request.getPrice() != null)
+        {
+            throw new ServiceException("使用基础价时不能同时设置门店售价");
+        }
+        if (Boolean.TRUE.equals(request.getUseBasePrice()))
+        {
+            current.setPrice(null);
+        }
+        else if (request.getPrice() != null)
+        {
+            current.setPrice(request.getPrice());
+        }
+        current.setStatus(StringUtils.nvl(request.getStatus(), current.getStatus()));
+        current.setSortOrder(StringUtils.nvl(request.getSortOrder(), current.getSortOrder()));
+        return productCenterMapper.updateShopProduct(current);
     }
 
     @Override
@@ -260,6 +289,7 @@ public class ProductCenterServiceImpl implements IProductCenterService
         StockLedger existing = productCenterMapper.selectStockLedgerByKey(idempotentKey);
         if (existing != null)
         {
+            validateExistingAdjustment(existing, id, request);
             return existing;
         }
         ShopProduct shopProduct = productCenterMapper.selectShopProductByIdForUpdate(id);
@@ -270,6 +300,7 @@ public class ProductCenterServiceImpl implements IProductCenterService
         existing = productCenterMapper.selectStockLedgerByKey(idempotentKey);
         if (existing != null)
         {
+            validateExistingAdjustment(existing, id, request);
             return existing;
         }
         int beforeStock = shopProduct.getStock();
@@ -289,13 +320,17 @@ public class ProductCenterServiceImpl implements IProductCenterService
     }
 
     @Override
-    public int deductStock(Long id, Integer quantity)
+    @Transactional
+    public StockLedger deductStock(Long orderId, Long shopProductId, Integer quantity)
     {
-        if (quantity == null || quantity <= 0)
-        {
-            throw new ServiceException("扣减数量必须大于0");
-        }
-        return productCenterMapper.deductShopProductStock(id, quantity);
+        return changeOrderStock(orderId, shopProductId, quantity, "DEDUCT");
+    }
+
+    @Override
+    @Transactional
+    public StockLedger restoreStock(Long orderId, Long shopProductId, Integer quantity)
+    {
+        return changeOrderStock(orderId, shopProductId, quantity, "RESTORE");
     }
 
     @Override
@@ -322,6 +357,16 @@ public class ProductCenterServiceImpl implements IProductCenterService
             throw new ServiceException("规格模板不存在");
         }
         return template;
+    }
+
+    private SpecTemplate requireSpecTemplateForUpdate(Long id)
+    {
+        SpecTemplate locked = id == null ? null : productCenterMapper.selectSpecTemplateByIdForUpdate(id);
+        if (locked == null)
+        {
+            throw new ServiceException("规格模板不存在");
+        }
+        return productCenterMapper.selectSpecTemplateById(id);
     }
 
     private SpecOption requireSpecOption(Long id)
@@ -389,7 +434,7 @@ public class ProductCenterServiceImpl implements IProductCenterService
 
     private void validateDefaultOption(SpecOption option, Long excludeId)
     {
-        SpecTemplate template = requireSpecTemplate(option.getTemplateId());
+        SpecTemplate template = requireSpecTemplateForUpdate(option.getTemplateId());
         if (!Integer.valueOf(1).equals(option.getIsDefault()) || !Integer.valueOf(1).equals(option.getStatus()))
         {
             return;
@@ -471,5 +516,111 @@ public class ProductCenterServiceImpl implements IProductCenterService
             return new ArrayList<>();
         }
         return new ArrayList<>(new LinkedHashSet<>(ids));
+    }
+
+    private StockLedger changeOrderStock(Long orderId, Long shopProductId, Integer quantity, String changeType)
+    {
+        if (orderId == null)
+        {
+            throw new ServiceException("订单ID不能为空");
+        }
+        if (shopProductId == null)
+        {
+            throw new ServiceException("门店商品ID不能为空");
+        }
+        if (quantity == null || quantity <= 0)
+        {
+            throw new ServiceException("库存变更数量必须大于0");
+        }
+        if ("RESTORE".equals(changeType))
+        {
+            StockLedger deduction = productCenterMapper.selectStockLedgerByKey(
+                    orderId + ":" + shopProductId + ":DEDUCT");
+            if (deduction == null)
+            {
+                throw new ServiceException("未找到对应的库存扣减流水");
+            }
+            if (deduction.getBeforeStock() != -1 && !Objects.equals(deduction.getChangeAmount(), -quantity))
+            {
+                throw new ServiceException("库存恢复数量与原扣减数量不一致");
+            }
+        }
+
+        String idempotentKey = orderId + ":" + shopProductId + ":" + changeType;
+        StockLedger existing = productCenterMapper.selectStockLedgerByKey(idempotentKey);
+        if (existing != null)
+        {
+            validateExistingOrderStock(existing, orderId, shopProductId, quantity, changeType);
+            return existing;
+        }
+
+        ShopProduct shopProduct = productCenterMapper.selectShopProductByIdForUpdate(shopProductId);
+        if (shopProduct == null)
+        {
+            throw new ServiceException("门店商品不存在");
+        }
+        existing = productCenterMapper.selectStockLedgerByKey(idempotentKey);
+        if (existing != null)
+        {
+            validateExistingOrderStock(existing, orderId, shopProductId, quantity, changeType);
+            return existing;
+        }
+
+        int beforeStock = shopProduct.getStock();
+        int rows;
+        int afterStock;
+        if ("DEDUCT".equals(changeType))
+        {
+            rows = productCenterMapper.deductShopProductStock(shopProductId, quantity);
+            if (rows == 0)
+            {
+                throw new ServiceException("商品库存不足");
+            }
+            afterStock = beforeStock == -1 ? -1 : beforeStock - quantity;
+        }
+        else
+        {
+            rows = productCenterMapper.restoreShopProductStock(shopProductId, quantity);
+            if (rows == 0)
+            {
+                throw new ServiceException("恢复商品库存失败");
+            }
+            afterStock = beforeStock == -1 ? -1 : beforeStock + quantity;
+        }
+
+        StockLedger ledger = new StockLedger();
+        ledger.setShopProductId(shopProductId);
+        ledger.setChangeType(changeType);
+        ledger.setChangeAmount(beforeStock == -1 ? 0 : "DEDUCT".equals(changeType) ? -quantity : quantity);
+        ledger.setBeforeStock(beforeStock);
+        ledger.setAfterStock(afterStock);
+        ledger.setOrderId(orderId);
+        ledger.setIdempotentKey(idempotentKey);
+        ledger.setReason("");
+        productCenterMapper.insertStockLedger(ledger);
+        return ledger;
+    }
+
+    private void validateExistingAdjustment(StockLedger existing, Long shopProductId, StockAdjustRequest request)
+    {
+        if (!Objects.equals(existing.getShopProductId(), shopProductId)
+                || !Objects.equals(existing.getAfterStock(), request.getStock())
+                || !Objects.equals(existing.getReason(), request.getReason()))
+        {
+            throw new ServiceException("库存调整请求ID已被其他参数使用");
+        }
+    }
+
+    private void validateExistingOrderStock(StockLedger existing, Long orderId, Long shopProductId,
+            Integer quantity, String changeType)
+    {
+        int expectedAmount = existing.getBeforeStock() == -1 ? 0 : "DEDUCT".equals(changeType) ? -quantity : quantity;
+        if (!Objects.equals(existing.getOrderId(), orderId)
+                || !Objects.equals(existing.getShopProductId(), shopProductId)
+                || !Objects.equals(existing.getChangeType(), changeType)
+                || !Objects.equals(existing.getChangeAmount(), expectedAmount))
+        {
+            throw new ServiceException("库存变更幂等键已被其他参数使用");
+        }
     }
 }

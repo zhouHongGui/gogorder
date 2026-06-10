@@ -8,6 +8,7 @@ import com.ruoyi.system.domain.SpecOption;
 import com.ruoyi.system.domain.SpecTemplate;
 import com.ruoyi.system.domain.StockLedger;
 import com.ruoyi.system.domain.dto.ShopProductAssignRequest;
+import com.ruoyi.system.domain.dto.ShopProductUpdateRequest;
 import com.ruoyi.system.domain.dto.StockAdjustRequest;
 
 /**
@@ -38,8 +39,9 @@ public interface IProductCenterService
 
     List<ShopProduct> selectShopProductList(Long shopId);
     int assignShopProducts(ShopProductAssignRequest request);
-    int updateShopProduct(ShopProduct shopProduct);
+    int updateShopProduct(Long id, ShopProductUpdateRequest request);
     StockLedger adjustStock(Long id, StockAdjustRequest request);
-    int deductStock(Long id, Integer quantity);
+    StockLedger deductStock(Long orderId, Long shopProductId, Integer quantity);
+    StockLedger restoreStock(Long orderId, Long shopProductId, Integer quantity);
     int deleteShopProducts(List<Long> ids);
 }

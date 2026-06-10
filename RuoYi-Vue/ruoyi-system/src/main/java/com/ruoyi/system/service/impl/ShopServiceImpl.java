@@ -48,6 +48,10 @@ public class ShopServiceImpl implements IShopService
     @Override
     public int insertShop(Shop shop)
     {
+        if (StringUtils.isBlank(shop.getShopCode()))
+        {
+            throw new ServiceException("门店编号不能为空");
+        }
         if (!checkShopCodeUnique(shop))
         {
             throw new ServiceException("门店编号已存在");
@@ -65,6 +69,7 @@ public class ShopServiceImpl implements IShopService
             throw new ServiceException("门店编号创建后不可修改");
         }
         shop.setShopCode(current.getShopCode());
+        shop.setStatus(null);
         return shopMapper.updateShop(shop);
     }
 

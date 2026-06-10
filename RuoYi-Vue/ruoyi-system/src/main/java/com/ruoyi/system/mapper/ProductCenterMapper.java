@@ -23,6 +23,8 @@ public interface ProductCenterMapper
 
     List<SpecTemplate> selectSpecTemplateList(SpecTemplate template);
     SpecTemplate selectSpecTemplateById(Long id);
+    SpecTemplate selectSpecTemplateByIdForUpdate(Long id);
+    List<SpecTemplate> selectSpecTemplatesByIds(List<Long> ids);
     int insertSpecTemplate(SpecTemplate template);
     int updateSpecTemplate(SpecTemplate template);
     int countProductsByTemplateId(Long templateId);
@@ -56,10 +58,12 @@ public interface ProductCenterMapper
     ShopProduct selectShopProductById(Long id);
     ShopProduct selectShopProductByIdForUpdate(Long id);
     int countShopById(Long shopId);
+    List<Long> selectAssignedProductIds(@Param("shopId") Long shopId, @Param("productIds") List<Long> productIds);
     int assignShopProducts(@Param("shopId") Long shopId, @Param("productIds") List<Long> productIds);
     int updateShopProduct(ShopProduct shopProduct);
     int updateShopProductStock(@Param("id") Long id, @Param("stock") Integer stock);
     int deductShopProductStock(@Param("id") Long id, @Param("quantity") Integer quantity);
+    int restoreShopProductStock(@Param("id") Long id, @Param("quantity") Integer quantity);
     int deleteShopProducts(List<Long> ids);
 
     StockLedger selectStockLedgerByKey(String idempotentKey);
