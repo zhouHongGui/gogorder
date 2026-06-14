@@ -259,6 +259,26 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         order by pc.sort_order asc, c.sort_order asc
     </select>
 
+    <resultMap id="CProductCategoryResult" type="CProductCategoryView">
+        <result property="productId" column="product_id"/>
+        <result property="categoryId" column="category_id"/>
+        <result property="name" column="category_name"/>
+        <result property="sortOrder" column="category_sort_order"/>
+        <result property="status" column="category_status"/>
+        <result property="createTime" column="category_create_time"/>
+    </resultMap>
+
+    <select id="selectCategoriesByProductIds" resultMap="CProductCategoryResult">
+        select pc.product_id, c.id category_id, c.name category_name,
+               c.sort_order category_sort_order, c.status category_status,
+               c.create_time category_create_time
+        from product_category pc
+        inner join category c on c.id = pc.category_id
+        where pc.product_id in
+        <foreach collection="list" item="productId" open="(" separator="," close=")">#{productId}</foreach>
+        order by pc.product_id asc, pc.sort_order asc, c.sort_order asc
+    </select>
+
     <select id="countShopProductsByProductId" parameterType="Long" resultType="int">
         select count(1) from shop_product where product_id = #{productId}
     </select>
@@ -302,6 +322,15 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         inner join product p on p.id = sp.product_id
         inner join shop s on s.id = sp.shop_id
         where sp.id = #{id}
+    </select>
+
+    <select id="selectActiveShopProductForCart" resultMap="ShopProductResult">
+        select sp.id, sp.shop_id, sp.product_id, sp.status, sp.stock
+        from shop_product sp
+        inner join product p on p.id = sp.product_id and p.status = 1
+        inner join shop s on s.id = sp.shop_id and s.del_flag = 0
+        where sp.id = #{id} and sp.shop_id = #{shopId} and sp.status = 1
+        limit 1
     </select>
 
     <select id="selectShopProductByIdForUpdate" parameterType="Long" resultMap="ShopProductResult">

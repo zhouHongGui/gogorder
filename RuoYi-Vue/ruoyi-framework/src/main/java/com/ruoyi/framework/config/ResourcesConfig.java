@@ -51,7 +51,11 @@ public class ResourcesConfig implements WebMvcConfigurer
     {
         registry.addInterceptor(cAuthInterceptor)
                 .addPathPatterns("/api/c/**")
-                .excludePathPatterns("/api/c/auth/**");
+                .excludePathPatterns(
+                        "/api/c/auth/**",
+                        "/api/c/shop/**",
+                        "/api/c/category/**",
+                        "/api/c/product/**");
         registry.addInterceptor(repeatSubmitInterceptor).addPathPatterns("/**");
     }
 

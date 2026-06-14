@@ -19,6 +19,12 @@
       }
     },
     {
+      "path": "pages/shop/detail",
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
       "path": "pages/menu/index",
       "style": {
         "navigationStyle": "custom"

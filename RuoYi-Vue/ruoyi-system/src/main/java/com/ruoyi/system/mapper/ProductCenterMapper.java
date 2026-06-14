@@ -9,6 +9,7 @@ import com.ruoyi.system.domain.SpecOption;
 import com.ruoyi.system.domain.SpecTemplate;
 import com.ruoyi.system.domain.StockLedger;
 import com.ruoyi.system.domain.dto.CProductView;
+import com.ruoyi.system.domain.dto.CProductCategoryView;
 
 /**
  * 商品中心数据层
@@ -52,11 +53,13 @@ public interface ProductCenterMapper
     int insertProductCategories(@Param("productId") Long productId, @Param("categoryIds") List<Long> categoryIds);
     List<Long> selectCategoryIdsByProductId(Long productId);
     List<Category> selectCategoriesByProductId(Long productId);
+    List<CProductCategoryView> selectCategoriesByProductIds(List<Long> productIds);
     int countShopProductsByProductId(Long productId);
     int deleteProductById(Long id);
 
     List<ShopProduct> selectShopProductList(Long shopId);
     ShopProduct selectShopProductById(Long id);
+    ShopProduct selectActiveShopProductForCart(@Param("shopId") Long shopId, @Param("id") Long id);
     ShopProduct selectShopProductByIdForUpdate(Long id);
     int countShopById(Long shopId);
     List<Long> selectAssignedProductIds(@Param("shopId") Long shopId, @Param("productIds") List<Long> productIds);

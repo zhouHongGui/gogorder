@@ -41,6 +41,7 @@ export interface Product {
   displayPrice: number
   stock: number
   soldOut: boolean
+  hasSpecs: boolean
   monthlySales: number
   tags: string[]
   categories: Category[]

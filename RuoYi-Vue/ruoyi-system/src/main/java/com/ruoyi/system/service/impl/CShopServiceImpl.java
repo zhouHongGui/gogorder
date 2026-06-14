@@ -6,7 +6,6 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
-import java.util.Comparator;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -25,6 +24,7 @@ import com.ruoyi.system.service.ICShopService;
 public class CShopServiceImpl implements ICShopService
 {
     private static final double EARTH_RADIUS_METERS = 6_371_000D;
+    private static final int NEARBY_SHOP_LIMIT = 50;
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
 
     @Autowired
@@ -36,13 +36,8 @@ public class CShopServiceImpl implements ICShopService
         validateLocation(longitude, latitude);
         String normalizedKeyword = StringUtils.trim(keyword);
         LocalTime now = LocalTime.now();
-        List<CShopView> shops = shopMapper.selectShopList(new Shop()).stream()
-                .filter(shop -> matchesKeyword(shop, normalizedKeyword))
+        return shopMapper.selectCNearbyShops(longitude, latitude, normalizedKeyword, NEARBY_SHOP_LIMIT).stream()
                 .map(shop -> buildView(shop, longitude, latitude, now))
-                .toList();
-        return shops.stream()
-                .sorted(Comparator.comparing(CShopView::getDistance,
-                        Comparator.nullsLast(Long::compareTo)))
                 .toList();
     }
 
@@ -117,16 +112,6 @@ public class CShopServiceImpl implements ICShopService
             throw new ServiceException("门店不存在或已删除");
         }
         return shop;
-    }
-
-    private boolean matchesKeyword(Shop shop, String keyword)
-    {
-        if (StringUtils.isEmpty(keyword))
-        {
-            return true;
-        }
-        return StringUtils.containsIgnoreCase(shop.getName(), keyword)
-                || StringUtils.containsIgnoreCase(fullAddress(shop), keyword);
     }
 
     private String fullAddress(Shop shop)

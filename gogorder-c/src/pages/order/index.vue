@@ -15,7 +15,7 @@
   </view>
 </template>
 
-<script setup>
+<script setup lang="ts">
 function goHome() {
   uni.switchTab({ url: '/pages/index/index' })
 }

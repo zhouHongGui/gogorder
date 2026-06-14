@@ -16,13 +16,14 @@
   </view>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed, reactive } from 'vue'
 import { updateUserInfo } from '../../api/auth'
 import { clearSession, getUser, saveUser } from '../../utils/auth'
+import type { UserUpdateRequest } from '../../types/auth'
 
-const current = getUser() || {}
-const form = reactive({ nickname: current.nickname || '', avatar: current.avatar || '' })
+const current = getUser()
+const form = reactive<UserUpdateRequest>({ nickname: current?.nickname || '', avatar: current?.avatar || '' })
 const avatarText = computed(() => (form.nickname || 'G').slice(0, 1))
 
 async function save() {

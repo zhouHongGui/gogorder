@@ -99,7 +99,7 @@ gogorder/
 
 ### 购物车
 - Redis Hash 存储，每个条目独立 Field。Lua 脚本原子操作防并发丢更新。
-- 添加接口 shopId 必传，门店不一致返回 `SHOP_MISMATCH` 错误码（**不清空**）。
+- 每个门店拥有独立购物车，Redis Key 使用 `cart:{userId}:{shopId}`；所有购物车接口必须携带 `shopId`。
 
 ### H5 端
 - 纯手机号短信验证码登录，**不依赖公众号 openid/JSAPI**。

@@ -25,6 +25,8 @@
       </view>
     </view>
 
+    <scroll-view class="home-scroll" scroll-y :show-scrollbar="false">
+      <view class="home-content">
     <view class="banner">
       <view class="banner-copy">
         <text class="banner-tag">夏日清爽计划</text>
@@ -60,14 +62,11 @@
         <text class="entry-arrow">›</text>
       </view>
 
-      <view class="order-entry preorder-entry" @click="startOrder('预约取餐')">
-        <view class="entry-icon clock-icon">
-          <view class="clock-hand clock-hour" />
-          <view class="clock-hand clock-minute" />
-        </view>
+      <view class="order-entry delivery-entry" @click="startDelivery">
+        <view class="entry-icon delivery-icon">送</view>
         <view class="entry-copy">
-          <text class="entry-title">预约取餐</text>
-          <text class="entry-subtitle">提前下单 · 准时取走</text>
+          <text class="entry-title">外卖配送</text>
+          <text class="entry-subtitle">送到身边 · 轻松享用</text>
         </view>
         <text class="entry-arrow">›</text>
       </view>
@@ -133,10 +132,12 @@
       </view>
       <view class="benefit-action">查看权益 ›</view>
     </view>
+      </view>
+    </scroll-view>
   </view>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed, ref } from 'vue'
 import { onShow } from '@dcloudio/uni-app'
 import { getUserInfo } from '../../api/auth'
@@ -144,18 +145,21 @@ import { getProducts } from '../../api/product'
 import { getShopDetail } from '../../api/shop'
 import { getToken, getUser, saveUser } from '../../utils/auth'
 import { businessHours, formatDistance, getCurrentShop, saveCurrentShop } from '../../utils/shop'
+import type { UserInfo } from '../../types/auth'
+import type { PopularProductCard } from '../../types/product'
+import type { HomeShopView, Shop } from '../../types/shop'
 
-const user = ref(getUser() || {})
-const avatarText = computed(() => (user.value.nickname || 'GO').slice(0, 1))
+const user = ref<UserInfo | null>(getUser())
+const avatarText = computed(() => (user.value?.nickname || 'GO').slice(0, 1))
 
-const currentShop = ref(normalizeShop(getCurrentShop()))
+const currentShop = ref<HomeShopView>(normalizeShop(getCurrentShop()))
 
-const defaultPopularProducts = [
+const defaultPopularProducts: PopularProductCard[] = [
   { name: '鲜橙茉莉', description: '清甜鲜果茶', price: '16', badge: 'TOP 1', color: '#ef9f49', background: 'linear-gradient(145deg, #fff1d9, #f7d9a9)' },
   { name: '生椰拿铁', description: '经典人气款', price: '18', badge: '热卖', color: '#b98757', background: 'linear-gradient(145deg, #efe6db, #dbc8b1)' },
   { name: '青提冰茶', description: '清爽低负担', price: '17', badge: '新品', color: '#a8bf72', background: 'linear-gradient(145deg, #eef4dc, #d9e3b8)' }
 ]
-const popularProducts = ref(defaultPopularProducts)
+const popularProducts = ref<PopularProductCard[]>(defaultPopularProducts)
 
 onShow(async () => {
   if (!getToken()) {
@@ -175,20 +179,24 @@ function selectShop() {
   uni.navigateTo({ url: '/pages/shop/select' })
 }
 
-function startOrder(label) {
+function startOrder(label: string) {
   if (!currentShop.value.id) {
     selectShop()
     return
   }
-  if (label === '立即点单' && !currentShop.value.instantAvailable) {
-    uni.showToast({ title: '当前门店仅支持预约取餐', icon: 'none' })
-    return
-  }
-  const orderType = label === '预约取餐' || !currentShop.value.instantAvailable ? 'PREORDER' : 'NORMAL'
+  const orderType = !currentShop.value.instantAvailable ? 'PREORDER' : 'NORMAL'
   uni.navigateTo({ url: `/pages/menu/index?orderType=${orderType}` })
 }
 
-function showDeveloping(name) {
+function startDelivery() {
+  if (!currentShop.value.id) {
+    selectShop()
+    return
+  }
+  uni.showToast({ title: '外卖功能即将开放', icon: 'none' })
+}
+
+function showDeveloping(name: string) {
   uni.showToast({ title: `${name}功能即将开放`, icon: 'none' })
 }
 
@@ -209,18 +217,19 @@ async function refreshCurrentShop() {
     const refreshed = { ...selected, ...detail }
     saveCurrentShop(refreshed)
     currentShop.value = normalizeShop(refreshed)
-    await refreshPopularProducts()
+    await refreshPopularProducts(refreshed.id)
   } catch (error) {
     currentShop.value = normalizeShop(selected)
   }
 }
 
-async function refreshPopularProducts() {
+async function refreshPopularProducts(shopId: number) {
   try {
-    const products = await getProducts({ shopId: currentShop.value.id })
+    const products = await getProducts({ shopId })
     const styles = defaultPopularProducts
     popularProducts.value = products.slice(0, 3).map((product, index) => ({
       ...product,
+      description: product.description || '现点现做，新鲜好喝',
       price: money(product.displayPrice),
       badge: index === 0 ? 'TOP 1' : (product.tags?.[0] || '推荐'),
       color: styles[index]?.color || '#c7833f',
@@ -231,12 +240,12 @@ async function refreshPopularProducts() {
   }
 }
 
-function money(cents) {
+function money(cents: number | null | undefined): string {
   const value = (Number(cents || 0) / 100).toFixed(2)
   return value.endsWith('.00') ? value.slice(0, -3) : value
 }
 
-function normalizeShop(shop) {
+function normalizeShop(shop: Shop | null): HomeShopView {
   if (!shop?.id) {
     return {
       id: null,
@@ -260,12 +269,30 @@ function normalizeShop(shop) {
 
 <style lang="scss" scoped>
 .home {
-  padding: calc(var(--status-bar-height) + 24rpx) 28rpx 72rpx;
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+  flex-direction: column;
   background: #f5f3ee;
+  box-sizing: border-box;
 }
 
 .header {
-  margin-bottom: 26rpx;
+  position: relative;
+  z-index: 5;
+  flex-shrink: 0;
+  padding: calc(var(--status-bar-height) + 24rpx) 28rpx 22rpx;
+  background: rgba(245, 243, 238, 0.98);
+  box-shadow: 0 10rpx 32rpx rgba(44, 38, 29, 0.06);
+}
+
+.home-scroll {
+  min-height: 0;
+  flex: 1;
+}
+
+.home-content {
+  padding: 24rpx 28rpx calc(72rpx + env(safe-area-inset-bottom));
 }
 
 .brand-row {
@@ -546,7 +573,7 @@ function normalizeShop(shop) {
   color: #fff;
 }
 
-.preorder-entry {
+.delivery-entry {
   background: #e9d8bf;
   color: #30291f;
 }
@@ -588,30 +615,15 @@ function normalizeShop(shop) {
   border-radius: 18rpx 18rpx 0 0;
 }
 
-.clock-icon {
-  border: 5rpx solid #704f2d;
-  border-radius: 50%;
-  box-sizing: border-box;
-}
-
-.clock-hand {
-  position: absolute;
-  left: 28rpx;
-  top: 28rpx;
-  width: 4rpx;
-  border-radius: 4rpx;
+.delivery-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 21rpx;
   background: #704f2d;
-  transform-origin: 2rpx 2rpx;
-}
-
-.clock-hour {
-  height: 18rpx;
-  transform: rotate(180deg);
-}
-
-.clock-minute {
-  height: 23rpx;
-  transform: rotate(125deg);
+  color: #f3dfc2;
+  font-size: 26rpx;
+  font-weight: 900;
 }
 
 .entry-copy {
@@ -636,7 +648,7 @@ function normalizeShop(shop) {
   font-size: 19rpx;
 }
 
-.preorder-entry .entry-subtitle {
+.delivery-entry .entry-subtitle {
   color: #89745c;
 }
 

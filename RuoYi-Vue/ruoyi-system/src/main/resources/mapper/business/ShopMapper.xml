@@ -53,6 +53,32 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         order by sort_order asc, id desc
     </select>
 
+    <select id="selectCNearbyShops" resultMap="ShopResult">
+        <include refid="selectShopVo"/>
+        where del_flag = 0
+        <if test="keyword != null and keyword != ''">
+            and (
+                name like concat('%', #{keyword}, '%')
+                or concat_ws('', province, city, district, address) like concat('%', #{keyword}, '%')
+            )
+        </if>
+        <choose>
+            <when test="longitude != null and latitude != null">
+                order by (longitude is null or latitude is null) asc, (
+                    6371000 * 2 * asin(sqrt(least(1,
+                        pow(sin(radians(latitude - #{latitude}) / 2), 2)
+                        + cos(radians(#{latitude})) * cos(radians(latitude))
+                        * pow(sin(radians(longitude - #{longitude}) / 2), 2)
+                    )))
+                ) asc, sort_order asc, id desc
+            </when>
+            <otherwise>
+                order by sort_order asc, id desc
+            </otherwise>
+        </choose>
+        limit #{limit}
+    </select>
+
     <select id="selectShopById" parameterType="Long" resultMap="ShopResult">
         <include refid="selectShopVo"/>
         where id = #{id} and del_flag = 0

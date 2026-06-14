@@ -18,6 +18,7 @@ public class CProductView
     private Integer displayPrice;
     private Integer stock;
     private boolean soldOut;
+    private boolean hasSpecs;
     private Long monthlySales;
     private List<String> tags;
     private List<Category> categories;
@@ -47,6 +48,8 @@ public class CProductView
     public void setStock(Integer stock) { this.stock = stock; }
     public boolean isSoldOut() { return soldOut; }
     public void setSoldOut(boolean soldOut) { this.soldOut = soldOut; }
+    public boolean isHasSpecs() { return hasSpecs; }
+    public void setHasSpecs(boolean hasSpecs) { this.hasSpecs = hasSpecs; }
     public Long getMonthlySales() { return monthlySales; }
     public void setMonthlySales(Long monthlySales) { this.monthlySales = monthlySales; }
     public List<String> getTags() { return tags; }

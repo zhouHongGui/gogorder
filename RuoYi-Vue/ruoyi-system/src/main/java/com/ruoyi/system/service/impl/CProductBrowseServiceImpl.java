@@ -5,6 +5,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import com.alibaba.fastjson2.JSON;
@@ -14,6 +15,7 @@ import com.ruoyi.system.domain.Category;
 import com.ruoyi.system.domain.SpecOption;
 import com.ruoyi.system.domain.SpecTemplate;
 import com.ruoyi.system.domain.dto.CProductView;
+import com.ruoyi.system.domain.dto.CProductCategoryView;
 import com.ruoyi.system.domain.dto.CSpecView;
 import com.ruoyi.system.mapper.ProductCenterMapper;
 import com.ruoyi.system.mapper.ShopMapper;
@@ -42,9 +44,17 @@ public class CProductBrowseServiceImpl implements ICProductBrowseService
     public List<CProductView> selectProducts(Long shopId, Long categoryId, String keyword)
     {
         requireShop(shopId);
+        List<CProductView> products = productCenterMapper.selectCShopProducts(shopId, categoryId, StringUtils.trim(keyword));
+        Map<Long, List<Category>> categoriesByProductId = products.isEmpty() ? Collections.emptyMap()
+                : productCenterMapper.selectCategoriesByProductIds(
+                        products.stream().map(CProductView::getProductId).distinct().toList()).stream()
+                        .collect(Collectors.groupingBy(
+                                CProductCategoryView::getProductId,
+                                Collectors.mapping(CProductCategoryView::toCategory, Collectors.toList())));
         Map<String, List<CSpecView>> specsCache = new HashMap<>();
-        return productCenterMapper.selectCShopProducts(shopId, categoryId, StringUtils.trim(keyword)).stream()
-                .map(product -> hydrateProductForList(product, specsCache))
+        return products.stream()
+                .map(product -> hydrateProductForList(product, specsCache,
+                        categoriesByProductId.getOrDefault(product.getProductId(), Collections.emptyList())))
                 .toList();
     }
 
@@ -57,27 +67,30 @@ public class CProductBrowseServiceImpl implements ICProductBrowseService
         {
             throw new ServiceException("商品不存在、未上架或不属于当前门店");
         }
-        hydrateProductBasics(product);
+        hydrateProductBasics(product, productCenterMapper.selectCategoriesByProductId(product.getProductId()));
         product.setSpecs(buildSpecs(parseLongList(product.getSpecTemplateIdsJson())));
+        product.setHasSpecs(!product.getSpecs().isEmpty());
         product.setDisplayPrice(product.getPrice() + minimumRequiredPrice(product.getSpecs()));
         return product;
     }
 
-    private CProductView hydrateProductForList(CProductView product, Map<String, List<CSpecView>> specsCache)
+    private CProductView hydrateProductForList(CProductView product, Map<String, List<CSpecView>> specsCache,
+            List<Category> categories)
     {
-        hydrateProductBasics(product);
+        hydrateProductBasics(product, categories);
         List<CSpecView> specs = specsCache.computeIfAbsent(
                 StringUtils.defaultString(product.getSpecTemplateIdsJson()),
                 key -> buildSpecs(parseLongList(key)));
+        product.setHasSpecs(!specs.isEmpty());
         product.setDisplayPrice(product.getPrice() + minimumRequiredPrice(specs));
         product.setSpecs(Collections.emptyList());
         return product;
     }
 
-    private void hydrateProductBasics(CProductView product)
+    private void hydrateProductBasics(CProductView product, List<Category> categories)
     {
         product.setTags(parseStringList(product.getTagsJson()));
-        product.setCategories(productCenterMapper.selectCategoriesByProductId(product.getProductId()));
+        product.setCategories(categories);
         product.setSoldOut(Integer.valueOf(0).equals(product.getStock()));
     }
 

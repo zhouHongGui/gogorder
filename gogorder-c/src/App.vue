@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
 export default {
   onLaunch() {
     console.info('gogorder C端启动')

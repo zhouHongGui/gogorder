@@ -7,4 +7,5 @@ export interface ApiResponse<T> {
 export type ApiRequestOptions = Omit<UniApp.RequestOptions, 'success' | 'fail'> & {
   auth?: boolean
   redirectOnUnauthorized?: boolean
+  showErrorToast?: boolean
 }

@@ -47,10 +47,11 @@
   </view>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { onUnmounted, ref } from 'vue'
 import { bindWechatPhone, loginBySms, loginByWechat, sendSms } from '../../api/auth'
 import { getToken, saveSession } from '../../utils/auth'
+import type { LoginResult } from '../../types/auth'
 
 const phone = ref('')
 const code = ref('')
@@ -59,7 +60,7 @@ const countdown = ref(0)
 const sending = ref(false)
 const loggingIn = ref(false)
 const bindTicket = ref('')
-let timer
+let timer: ReturnType<typeof setInterval> | undefined
 
 if (getToken()) {
   uni.reLaunch({ url: '/pages/index/index' })
@@ -105,8 +106,11 @@ function handleWechatLogin() {
     success: async result => {
       try {
         const data = await loginByWechat(result.code)
-        if (data.bound) finishLogin(data)
-        else bindTicket.value = data.bindTicket
+          if (data.bound && data.token && data.userInfo) {
+            finishLogin({ token: data.token, userInfo: data.userInfo })
+          } else {
+            bindTicket.value = data.bindTicket || ''
+          }
       } finally {
         loggingIn.value = false
       }
@@ -118,7 +122,7 @@ function handleWechatLogin() {
   })
 }
 
-async function handlePhoneNumber(event) {
+async function handlePhoneNumber(event: { detail: { code?: string } }) {
   const phoneCode = event.detail.code
   if (!phoneCode) {
     uni.showToast({ title: '需要授权手机号才能登录', icon: 'none' })
@@ -127,12 +131,14 @@ async function handlePhoneNumber(event) {
   finishLogin(await bindWechatPhone(bindTicket.value, phoneCode))
 }
 
-function finishLogin(data) {
+function finishLogin(data: LoginResult) {
   saveSession(data)
   uni.reLaunch({ url: '/pages/index/index' })
 }
 
-onUnmounted(() => clearInterval(timer))
+onUnmounted(() => {
+  if (timer) clearInterval(timer)
+})
 </script>
 
 <style lang="scss" scoped>
