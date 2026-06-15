@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.BalanceLedgerMapper">
+    <resultMap id="BalanceLedgerResult" type="BalanceLedger">
+        <id property="id" column="id"/><result property="userId" column="user_id"/>
+        <result property="type" column="type"/><result property="amount" column="amount"/>
+        <result property="beforeBalance" column="before_balance"/><result property="afterBalance" column="after_balance"/>
+        <result property="orderId" column="order_id"/><result property="operatorId" column="operator_id"/>
+        <result property="idempotentKey" column="idempotent_key"/><result property="remark" column="remark"/>
+        <result property="createTime" column="create_time"/>
+    </resultMap>
+    <insert id="insert" parameterType="BalanceLedger" useGeneratedKeys="true" keyProperty="id">
+        insert into balance_ledger(user_id, type, amount, before_balance, after_balance, order_id,
+            operator_id, idempotent_key, remark, create_time)
+        values(#{userId}, #{type}, #{amount}, #{beforeBalance}, #{afterBalance}, #{orderId},
+            #{operatorId}, #{idempotentKey}, #{remark}, sysdate())
+    </insert>
+    <select id="selectByIdempotentKey" parameterType="String" resultMap="BalanceLedgerResult">
+        select * from balance_ledger where idempotent_key = #{idempotentKey}
+    </select>
+</mapper>

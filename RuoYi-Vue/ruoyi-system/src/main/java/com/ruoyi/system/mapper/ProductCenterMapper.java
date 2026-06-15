@@ -69,6 +69,7 @@ public interface ProductCenterMapper
     int deductShopProductStock(@Param("id") Long id, @Param("quantity") Integer quantity);
     int restoreShopProductStock(@Param("id") Long id, @Param("quantity") Integer quantity);
     int deleteShopProducts(List<Long> ids);
+    int countActiveOrderItemsByShopProductIds(@Param("ids") List<Long> ids);
 
     List<Category> selectCShopCategories(Long shopId);
     List<CProductView> selectCShopProducts(@Param("shopId") Long shopId, @Param("categoryId") Long categoryId,

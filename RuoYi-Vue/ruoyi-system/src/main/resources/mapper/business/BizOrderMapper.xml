@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.BizOrderMapper">
+    <resultMap id="BizOrderResult" type="BizOrder">
+        <id property="id" column="id"/>
+        <result property="orderNo" column="order_no"/>
+        <result property="submitKey" column="submit_key"/>
+        <result property="pickupToken" column="pickup_token"/>
+        <result property="pickupDisplay" column="pickup_display"/>
+        <result property="pickupDate" column="pickup_date"/>
+        <result property="userId" column="user_id"/>
+        <result property="shopId" column="shop_id"/>
+        <result property="orderType" column="order_type"/>
+        <result property="scheduledPickupTime" column="scheduled_pickup_time"/>
+        <result property="orderStatus" column="order_status"/>
+        <result property="payStatus" column="pay_status"/>
+        <result property="refundStatus" column="refund_status"/>
+        <result property="productAmount" column="product_amount"/>
+        <result property="packFee" column="pack_fee"/>
+        <result property="totalAmount" column="total_amount"/>
+        <result property="remark" column="remark"/>
+        <result property="payTime" column="pay_time"/>
+        <result property="acceptTime" column="accept_time"/>
+        <result property="makeStartTime" column="make_start_time"/>
+        <result property="completeMakeTime" column="complete_make_time"/>
+        <result property="verifyTime" column="verify_time"/>
+        <result property="cancelTime" column="cancel_time"/>
+        <result property="cancelReason" column="cancel_reason"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateTime" column="update_time"/>
+    </resultMap>
+
+    <sql id="selectOrderColumns">
+        select id, order_no, submit_key, pickup_token, pickup_display, pickup_date, user_id, shop_id,
+               order_type, scheduled_pickup_time, order_status, pay_status, refund_status,
+               product_amount, pack_fee, total_amount, remark, pay_time, accept_time, make_start_time,
+               complete_make_time, verify_time, cancel_time, cancel_reason, create_time, update_time
+        from biz_order
+    </sql>
+
+    <sql id="userOrderFilter">
+        where user_id = #{userId}
+        <if test="startTime != null">
+            and create_time &gt;= #{startTime}
+        </if>
+        <if test="endTime != null">
+            and create_time &lt; #{endTime}
+        </if>
+    </sql>
+
+    <insert id="insertOrder" parameterType="BizOrder" useGeneratedKeys="true" keyProperty="id">
+        insert into biz_order(order_no, submit_key, user_id, shop_id, order_type, scheduled_pickup_time,
+            order_status, pay_status, refund_status, product_amount, pack_fee, total_amount, remark, create_time)
+        values(#{orderNo}, #{submitKey}, #{userId}, #{shopId}, #{orderType}, #{scheduledPickupTime},
+            0, 0, 0, #{productAmount}, #{packFee}, #{totalAmount}, #{remark}, #{createTime})
+    </insert>
+
+    <select id="selectById" parameterType="Long" resultMap="BizOrderResult">
+        <include refid="selectOrderColumns"/> where id = #{id}
+    </select>
+    <select id="selectByIdForUpdate" parameterType="Long" resultMap="BizOrderResult">
+        <include refid="selectOrderColumns"/> where id = #{id} for update
+    </select>
+    <select id="selectBySubmitKey" resultMap="BizOrderResult">
+        <include refid="selectOrderColumns"/> where user_id = #{userId} and submit_key = #{submitKey}
+    </select>
+    <select id="selectBySubmitKeyForUpdate" resultMap="BizOrderResult">
+        <include refid="selectOrderColumns"/>
+        where user_id = #{userId} and submit_key = #{submitKey} for update
+    </select>
+    <select id="selectByOrderNo" parameterType="String" resultMap="BizOrderResult">
+        <include refid="selectOrderColumns"/> where order_no = #{orderNo}
+    </select>
+    <select id="selectUserOrderList" resultMap="BizOrderResult">
+        <include refid="selectOrderColumns"/>
+        <include refid="userOrderFilter"/>
+        order by id desc
+        limit #{offset}, #{limit}
+    </select>
+    <select id="countUserOrders" resultType="long">
+        select count(1) from biz_order
+        <include refid="userOrderFilter"/>
+    </select>
+
+    <update id="updateOrderStatus">
+        update biz_order set order_status = #{orderStatus}, pay_status = #{payStatus},
+            refund_status = #{refundStatus}, pay_time = #{payTime}, accept_time = #{acceptTime},
+            pickup_token = #{pickupToken}, pickup_display = #{pickupDisplay}, pickup_date = #{pickupDate}
+        where id = #{id} and order_status = 0 and pay_status = 0
+    </update>
+    <update id="updateOrderForRefund">
+        update biz_order set order_status = #{orderStatus}, pay_status = #{payStatus},
+            refund_status = #{refundStatus}, cancel_time = #{cancelTime}, cancel_reason = #{cancelReason}
+        where id = #{id} and order_status = 1 and pay_status = 1 and refund_status = 0
+    </update>
+    <update id="cancelOrder">
+        update biz_order set order_status = #{orderStatus}, pay_status = #{payStatus},
+            cancel_time = #{cancelTime}, cancel_reason = #{cancelReason}
+        where id = #{id} and order_status = 0 and pay_status = 0
+    </update>
+
+    <select id="selectPendingTimeoutOrders" resultMap="BizOrderResult">
+        <include refid="selectOrderColumns"/>
+        where order_status = 0 and pay_status = 0 and create_time &lt; #{deadline} and id &gt; #{minId}
+        order by id asc limit #{limit}
+    </select>
+    <insert id="allocatePickupDisplay">
+        insert into pickup_sequence(shop_id, pickup_date, current_seq) values(#{shopId}, #{pickupDate}, 1)
+        on duplicate key update current_seq = current_seq + 1
+    </insert>
+    <select id="selectPickupSeq" resultType="int">
+        select current_seq from pickup_sequence where shop_id = #{shopId} and pickup_date = #{pickupDate}
+    </select>
+</mapper>

@@ -17,6 +17,8 @@ public interface ShopMapper
 
     public Shop selectShopById(Long id);
 
+    public List<Shop> selectShopByIds(@Param("ids") List<Long> ids);
+
     public Shop selectShopByCode(String shopCode);
 
     public int insertShop(Shop shop);

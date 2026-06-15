@@ -27,6 +27,12 @@ public class CUserController
         return AjaxResult.success(authService.getUserInfo(currentUserId()));
     }
 
+    @GetMapping("/balance")
+    public AjaxResult balance()
+    {
+        return AjaxResult.success(authService.getUserBalance(currentUserId()));
+    }
+
     @PutMapping("/update")
     public AjaxResult update(@Validated @RequestBody CUserUpdateRequest request)
     {

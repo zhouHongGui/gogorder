@@ -678,7 +678,7 @@ async function confirmClearCart() {
 
 function checkout() {
   if (!cart.value.totalCount) return
-  uni.showToast({ title: '确认订单功能将在下一阶段开放', icon: 'none' })
+  uni.navigateTo({ url: `/pages/order/confirm?shopId=${shop.value.id}&orderType=${orderType.value}` })
 }
 
 function switchServiceMode(mode: ServiceMode) {

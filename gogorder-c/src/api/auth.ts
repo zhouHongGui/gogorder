@@ -1,5 +1,5 @@
 import { request } from '../utils/request'
-import type { LoginResult, SendSmsResult, UserInfo, UserUpdateRequest, WechatLoginResult } from '../types/auth'
+import type { LoginResult, SendSmsResult, UserBalance, UserInfo, UserUpdateRequest, WechatLoginResult } from '../types/auth'
 
 export const sendSms = (phone: string) => request<SendSmsResult>({
   url: '/api/c/auth/send-sms',
@@ -27,6 +27,11 @@ export const bindWechatPhone = (bindTicket: string, phoneCode: string) => reques
 
 export const getUserInfo = () => request<UserInfo>({
   url: '/api/c/user/info',
+  method: 'GET'
+})
+
+export const getUserBalance = () => request<UserBalance>({
+  url: '/api/c/user/balance',
   method: 'GET'
 })
 

@@ -1,6 +1,8 @@
 -- gogorder V1.0 business schema
 -- Source of truth: docs/M01-数据库设计.md and docs/M13-全局枚举与接口契约.md
 -- This script is intentionally non-destructive and can be executed repeatedly.
+-- Existing databases created before M08 must execute gogorder_v1_0_order_schema_patch.sql
+-- before deploying the order/payment code.
 
 SET NAMES utf8mb4;
 
@@ -264,12 +266,31 @@ CREATE TABLE IF NOT EXISTS `biz_order_item` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `order_id` BIGINT NOT NULL,
   `product_id` BIGINT NOT NULL,
+  `shop_product_id` BIGINT NOT NULL COMMENT '门店商品ID',
   `product_name` VARCHAR(100) NOT NULL COMMENT '商品名称（快照）',
   `product_image` VARCHAR(255) DEFAULT '',
-  `specs` JSON NOT NULL COMMENT '规格快照：{templateId: {optionId, label, priceAdd}, ...}',
+  `specs` JSON NOT NULL COMMENT '规格快照数组：[{templateId, templateName, optionId, label, priceAdd}]',
   `unit_price` INT NOT NULL COMMENT '单价（分）',
   `quantity` INT NOT NULL DEFAULT 1,
   `subtotal` INT NOT NULL COMMENT '小计（分）',
   PRIMARY KEY (`id`),
-  KEY `idx_order_id` (`order_id`)
+  KEY `idx_order_id` (`order_id`),
+  KEY `idx_shop_product_id` (`shop_product_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单明细';
+
+CREATE TABLE IF NOT EXISTS `pickup_sequence` (
+  `shop_id` BIGINT NOT NULL,
+  `pickup_date` DATE NOT NULL,
+  `current_seq` INT NOT NULL DEFAULT 0 COMMENT '当前最大展示号',
+  PRIMARY KEY (`shop_id`, `pickup_date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='取餐展示号序列';
+
+INSERT INTO `sys_job` (
+  `job_name`, `job_group`, `invoke_target`, `cron_expression`, `misfire_policy`,
+  `concurrent`, `status`, `create_by`, `create_time`, `remark`
+)
+SELECT '待支付订单超时取消', 'SYSTEM', 'paymentTimeoutTask.cancelTimeoutOrders', '0 * * * * ?',
+       '3', '1', '0', 'admin', SYSDATE(), '每分钟取消超过15分钟仍未支付的订单'
+WHERE NOT EXISTS (
+  SELECT 1 FROM `sys_job` WHERE `invoke_target` = 'paymentTimeoutTask.cancelTimeoutOrders'
+);

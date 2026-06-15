@@ -27,6 +27,11 @@ public final class ServiceException extends RuntimeException
     private String detailMessage;
 
     /**
+     * 可安全返回给客户端的业务数据
+     */
+    private Object data;
+
+    /**
      * 空构造方法，避免反序列化问题
      */
     public ServiceException()
@@ -60,6 +65,11 @@ public final class ServiceException extends RuntimeException
         return code;
     }
 
+    public Object getData()
+    {
+        return data;
+    }
+
     public ServiceException setMessage(String message)
     {
         this.message = message;
@@ -69,6 +79,12 @@ public final class ServiceException extends RuntimeException
     public ServiceException setDetailMessage(String detailMessage)
     {
         this.detailMessage = detailMessage;
+        return this;
+    }
+
+    public ServiceException setData(Object data)
+    {
+        this.data = data;
         return this;
     }
 }

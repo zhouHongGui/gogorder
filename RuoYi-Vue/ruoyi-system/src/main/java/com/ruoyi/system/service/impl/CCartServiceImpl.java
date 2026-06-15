@@ -3,14 +3,11 @@ package com.ruoyi.system.service.impl;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
-import java.util.TreeMap;
 import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -21,18 +18,15 @@ import com.ruoyi.common.exception.ServiceException;
 import com.ruoyi.common.utils.StringUtils;
 import com.ruoyi.system.domain.Shop;
 import com.ruoyi.system.domain.ShopProduct;
-import com.ruoyi.system.domain.SpecOption;
 import com.ruoyi.system.domain.dto.CCartAddRequest;
 import com.ruoyi.system.domain.dto.CCartItem;
 import com.ruoyi.system.domain.dto.CCartSpecOption;
 import com.ruoyi.system.domain.dto.CCartUpdateRequest;
 import com.ruoyi.system.domain.dto.CCartView;
-import com.ruoyi.system.domain.dto.CProductView;
-import com.ruoyi.system.domain.dto.CSpecView;
 import com.ruoyi.system.mapper.ProductCenterMapper;
 import com.ruoyi.system.mapper.ShopMapper;
 import com.ruoyi.system.service.ICCartService;
-import com.ruoyi.system.service.ICProductBrowseService;
+import com.ruoyi.system.service.ISpecValidationService;
 
 @Service
 public class CCartServiceImpl implements ICCartService
@@ -117,13 +111,13 @@ public class CCartServiceImpl implements ICCartService
     private StringRedisTemplate redisTemplate;
 
     @Autowired
-    private ICProductBrowseService productBrowseService;
-
-    @Autowired
     private ProductCenterMapper productCenterMapper;
 
     @Autowired
     private ShopMapper shopMapper;
+
+    @Autowired
+    private ISpecValidationService specValidationService;
 
     @Override
     public CCartView getCart(Long userId, Long shopId)
@@ -152,8 +146,7 @@ public class CCartServiceImpl implements ICCartService
     public CCartView addItem(Long userId, CCartAddRequest request)
     {
         Shop shop = requireShop(request.getShopId());
-        CProductView product = productBrowseService.selectProductDetail(request.getShopId(), request.getProductId());
-        CCartItem item = buildCartItem(product, request);
+        CCartItem item = buildCartItem(request);
         String result = redisTemplate.execute(
                 ADD_SCRIPT,
                 Collections.singletonList(cartKey(userId, request.getShopId())),
@@ -161,7 +154,7 @@ public class CCartServiceImpl implements ICCartService
                 shop.getName(),
                 itemField(item.getCartItemId()),
                 JSON.toJSONString(item),
-                String.valueOf(StringUtils.nvl(product.getStock(), -1)),
+                String.valueOf(StringUtils.nvl(item.getStock(), -1)),
                 String.valueOf(CART_TTL_SECONDS));
         handleScriptResult(result);
         return getCart(userId, request.getShopId());
@@ -205,132 +198,34 @@ public class CCartServiceImpl implements ICCartService
         return getCart(userId, shopId);
     }
 
-    private CCartItem buildCartItem(CProductView product, CCartAddRequest request)
+    private CCartItem buildCartItem(CCartAddRequest request)
     {
-        if (product.isSoldOut())
-        {
-            throw new ServiceException("商品已售罄");
-        }
-        TreeMap<Long, List<String>> normalizedSpecs = normalizeSpecs(request.getSpecs());
-        Map<Long, CSpecView> productSpecs = product.getSpecs().stream()
-                .collect(Collectors.toMap(CSpecView::getTemplateId, spec -> spec));
-        List<CCartSpecOption> selectedOptions = new ArrayList<>();
-        int unitPrice = StringUtils.nvl(product.getPrice(), 0);
-
-        for (CSpecView spec : product.getSpecs())
-        {
-            List<String> selectedIds = normalizedSpecs.getOrDefault(spec.getTemplateId(), Collections.emptyList());
-            validateSelectionCount(spec, selectedIds.size());
-            Map<String, SpecOption> options = spec.getOptions().stream()
-                    .collect(Collectors.toMap(SpecOption::getOptionId, option -> option));
-            for (String optionId : selectedIds)
-            {
-                SpecOption option = options.get(optionId);
-                if (option == null)
-                {
-                    throw new ServiceException("规格选项不存在或已禁用");
-                }
-                CCartSpecOption snapshot = new CCartSpecOption();
-                snapshot.setTemplateId(spec.getTemplateId());
-                snapshot.setTemplateName(spec.getName());
-                snapshot.setOptionId(option.getOptionId());
-                snapshot.setLabel(option.getLabel());
-                snapshot.setPriceAdd(StringUtils.nvl(option.getPriceAdd(), 0));
-                selectedOptions.add(snapshot);
-                unitPrice += snapshot.getPriceAdd();
-            }
-        }
-        if (normalizedSpecs.keySet().stream().anyMatch(templateId -> !productSpecs.containsKey(templateId)))
-        {
-            throw new ServiceException("商品不支持所选规格");
-        }
+        var validation = specValidationService.validateAndPrice(request.getShopId(), request.getProductId(), request.getSpecs());
+        List<CCartSpecOption> selectedOptions = validation.getSelectedOptions().stream().map(snapshot -> {
+            CCartSpecOption option = new CCartSpecOption();
+            option.setTemplateId(snapshot.getTemplateId());
+            option.setTemplateName(snapshot.getTemplateName());
+            option.setOptionId(snapshot.getOptionId());
+            option.setLabel(snapshot.getLabel());
+            option.setPriceAdd(snapshot.getPriceAdd());
+            return option;
+        }).toList();
 
         CCartItem item = new CCartItem();
-        item.setCartItemId(cartItemId(product.getProductId(), normalizedSpecs));
-        item.setShopProductId(product.getShopProductId());
-        item.setProductId(product.getProductId());
-        item.setProductName(product.getName());
-        item.setImage(product.getImage());
-        TreeMap<String, List<String>> snapshotSpecs = new TreeMap<>();
-        normalizedSpecs.forEach((templateId, optionIds) -> snapshotSpecs.put(String.valueOf(templateId), optionIds));
-        item.setSpecs(snapshotSpecs);
+        item.setCartItemId(cartItemId(request.getProductId(), validation.getNormalizedSpecs()));
+        item.setShopProductId(validation.getShopProductId());
+        item.setProductId(request.getProductId());
+        item.setProductName(validation.getProductName());
+        item.setImage(validation.getProductImage());
+        item.setSpecs(validation.getNormalizedSpecs());
         item.setSelectedSpecs(selectedOptions);
         item.setSpecText(selectedOptions.isEmpty() ? "默认规格"
                 : selectedOptions.stream().map(CCartSpecOption::getLabel).collect(Collectors.joining("、")));
-        item.setUnitPrice(unitPrice);
+        item.setUnitPrice(validation.getUnitPrice());
         item.setQuantity(request.getQuantity());
-        item.setAmount(unitPrice * request.getQuantity());
-        item.setStock(StringUtils.nvl(product.getStock(), -1));
+        item.setAmount(Math.multiplyExact(validation.getUnitPrice(), request.getQuantity()));
+        item.setStock(validation.getStock());
         return item;
-    }
-
-    private TreeMap<Long, List<String>> normalizeSpecs(Map<String, Object> specs)
-    {
-        TreeMap<Long, List<String>> normalized = new TreeMap<>();
-        if (specs == null)
-        {
-            return normalized;
-        }
-        specs.forEach((key, value) -> {
-            Long templateId;
-            try
-            {
-                templateId = Long.valueOf(key);
-            }
-            catch (NumberFormatException e)
-            {
-                throw new ServiceException("规格模板ID格式不正确");
-            }
-            Collection<String> values;
-            if (value instanceof String optionId)
-            {
-                values = Collections.singletonList(optionId);
-            }
-            else if (value instanceof Collection<?> collection)
-            {
-                if (collection.stream().anyMatch(item -> !(item instanceof String)))
-                {
-                    throw new ServiceException("规格选项ID必须为字符串");
-                }
-                values = collection.stream().map(String.class::cast).toList();
-            }
-            else
-            {
-                throw new ServiceException("规格选项必须为字符串或字符串数组");
-            }
-            List<String> optionIds = values.stream()
-                    .filter(StringUtils::isNotEmpty)
-                    .distinct()
-                    .sorted()
-                    .toList();
-            if (!optionIds.isEmpty())
-            {
-                normalized.put(templateId, optionIds);
-            }
-        });
-        return normalized;
-    }
-
-    private void validateSelectionCount(CSpecView spec, int count)
-    {
-        int min = StringUtils.nvl(spec.getMinSelect(), 0);
-        int max = Math.max(1, StringUtils.nvl(spec.getMaxSelect(), 1));
-        if (spec.isRequired() && count < Math.max(1, min))
-        {
-            throw new ServiceException("请选择" + spec.getName());
-        }
-        if (count > 0 && count < min)
-        {
-            throw new ServiceException(spec.getName() + "至少选择" + min + "项");
-        }
-        if (Integer.valueOf(1).equals(spec.getType()) && count > 1)
-        {
-            throw new ServiceException(spec.getName() + "只能选择一项");
-        }
-        if (count > max)
-        {
-            throw new ServiceException(spec.getName() + "最多选择" + max + "项");
-        }
     }
 
     private void handleScriptResult(String result)
@@ -374,7 +269,7 @@ public class CCartServiceImpl implements ICCartService
         return StringUtils.nvl(shopProduct.getStock(), -1);
     }
 
-    private String cartItemId(Long productId, TreeMap<Long, List<String>> specs)
+    private String cartItemId(Long productId, Map<String, List<String>> specs)
     {
         String source = productId + ":" + JSON.toJSONString(specs);
         try

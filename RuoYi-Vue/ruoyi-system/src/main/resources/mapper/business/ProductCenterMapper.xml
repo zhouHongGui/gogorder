@@ -349,10 +349,11 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     </select>
 
     <insert id="assignShopProducts">
-        insert ignore into shop_product(shop_id, product_id, price, status, stock, sort_order, create_time) values
+        insert into shop_product(shop_id, product_id, price, status, stock, sort_order, create_time) values
         <foreach collection="productIds" item="productId" separator=",">
             (#{shopId}, #{productId}, null, 1, -1, 0, sysdate())
         </foreach>
+        on duplicate key update status = 1
     </insert>
 
     <update id="updateShopProduct" parameterType="ShopProduct">
@@ -375,10 +376,19 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         where id = #{id}
     </update>
 
-    <delete id="deleteShopProducts">
-        delete from shop_product where id in
+    <update id="deleteShopProducts">
+        update shop_product set status = 0 where id in
         <foreach collection="list" item="id" open="(" separator="," close=")">#{id}</foreach>
-    </delete>
+    </update>
+
+    <select id="countActiveOrderItemsByShopProductIds" resultType="int">
+        select count(1)
+        from biz_order_item bi
+        inner join biz_order bo on bo.id = bi.order_id
+        where bi.shop_product_id in
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+          and bo.order_status not in (4, 5)
+    </select>
 
     <resultMap id="CProductResult" type="CProductView">
         <id property="shopProductId" column="shop_product_id"/>

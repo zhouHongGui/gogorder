@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.BizOrderItemMapper">
+    <resultMap id="BizOrderItemResult" type="BizOrderItem">
+        <id property="id" column="id"/>
+        <result property="orderId" column="order_id"/>
+        <result property="productId" column="product_id"/>
+        <result property="shopProductId" column="shop_product_id"/>
+        <result property="productName" column="product_name"/>
+        <result property="productImage" column="product_image"/>
+        <result property="specs" column="specs"/>
+        <result property="unitPrice" column="unit_price"/>
+        <result property="quantity" column="quantity"/>
+        <result property="subtotal" column="subtotal"/>
+    </resultMap>
+    <insert id="batchInsert">
+        insert into biz_order_item(order_id, product_id, shop_product_id, product_name, product_image,
+            specs, unit_price, quantity, subtotal) values
+        <foreach collection="items" item="item" separator=",">
+            (#{item.orderId}, #{item.productId}, #{item.shopProductId}, #{item.productName}, #{item.productImage},
+             #{item.specs}, #{item.unitPrice}, #{item.quantity}, #{item.subtotal})
+        </foreach>
+    </insert>
+    <select id="selectByOrderId" parameterType="Long" resultMap="BizOrderItemResult">
+        select id, order_id, product_id, shop_product_id, product_name, product_image, specs,
+               unit_price, quantity, subtotal
+        from biz_order_item where order_id = #{orderId} order by id asc
+    </select>
+    <select id="selectByOrderIds" resultMap="BizOrderItemResult">
+        select id, order_id, product_id, shop_product_id, product_name, product_image, specs,
+               unit_price, quantity, subtotal
+        from biz_order_item
+        where order_id in
+        <foreach collection="orderIds" item="orderId" open="(" separator="," close=")">
+            #{orderId}
+        </foreach>
+        order by order_id desc, id asc
+    </select>
+</mapper>

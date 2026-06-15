@@ -246,17 +246,8 @@ public class ProductCenterServiceImpl implements IProductCenterService
         {
             throw new ServiceException("存在无效商品，无法分配");
         }
-        List<Long> assignedProductIds = productCenterMapper.selectAssignedProductIds(request.getShopId(), productIds);
         int rows = productCenterMapper.assignShopProducts(request.getShopId(), productIds);
-        if (StringUtils.isNotEmpty(assignedProductIds))
-        {
-            log.info("门店商品分配跳过已存在商品，shopId={}，productIds={}", request.getShopId(), assignedProductIds);
-        }
-        if (rows + assignedProductIds.size() < productIds.size())
-        {
-            log.info("门店商品分配期间存在并发重复，shopId={}，请求数量={}，新增数量={}",
-                    request.getShopId(), productIds.size(), rows);
-        }
+        log.info("门店商品分配完成，shopId={}，productCount={}", request.getShopId(), productIds.size());
         return rows;
     }
 
@@ -334,9 +325,19 @@ public class ProductCenterServiceImpl implements IProductCenterService
     }
 
     @Override
+    @Transactional
     public int deleteShopProducts(List<Long> ids)
     {
-        return productCenterMapper.deleteShopProducts(distinctIds(ids));
+        List<Long> shopProductIds = distinctIds(ids);
+        if (shopProductIds.isEmpty())
+        {
+            return 0;
+        }
+        if (productCenterMapper.countActiveOrderItemsByShopProductIds(shopProductIds) > 0)
+        {
+            throw new ServiceException("存在进行中订单引用的门店商品，请先处理订单后再下架");
+        }
+        return productCenterMapper.deleteShopProducts(shopProductIds);
     }
 
     private Category requireCategory(Long id)
@@ -569,14 +570,21 @@ public class ProductCenterServiceImpl implements IProductCenterService
         int beforeStock = shopProduct.getStock();
         int rows;
         int afterStock;
-        if ("DEDUCT".equals(changeType))
+        if (beforeStock == -1)
+        {
+            // 无限库存无需执行 -1 -> -1 的无变化 UPDATE。数据源启用 useAffectedRows=true，
+            // 无变化 UPDATE 会返回 0，不能将其误判为库存不足或恢复失败。
+            rows = 1;
+            afterStock = -1;
+        }
+        else if ("DEDUCT".equals(changeType))
         {
             rows = productCenterMapper.deductShopProductStock(shopProductId, quantity);
             if (rows == 0)
             {
                 throw new ServiceException("商品库存不足");
             }
-            afterStock = beforeStock == -1 ? -1 : beforeStock - quantity;
+            afterStock = beforeStock - quantity;
         }
         else
         {
@@ -585,7 +593,7 @@ public class ProductCenterServiceImpl implements IProductCenterService
             {
                 throw new ServiceException("恢复商品库存失败");
             }
-            afterStock = beforeStock == -1 ? -1 : beforeStock + quantity;
+            afterStock = beforeStock + quantity;
         }
 
         StockLedger ledger = new StockLedger();

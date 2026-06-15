@@ -16,5 +16,7 @@ public interface ICAuthService
 
     CUser getUserInfo(Long userId);
 
+    Map<String, Object> getUserBalance(Long userId);
+
     CUser updateUser(Long userId, CUserUpdateRequest request);
 }

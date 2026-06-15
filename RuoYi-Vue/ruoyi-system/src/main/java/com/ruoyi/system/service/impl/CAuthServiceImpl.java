@@ -25,6 +25,7 @@ import com.ruoyi.system.domain.CUserWechat;
 import com.ruoyi.system.domain.dto.CUserUpdateRequest;
 import com.ruoyi.system.domain.dto.CWechatBindTicket;
 import com.ruoyi.system.mapper.CUserMapper;
+import com.ruoyi.system.mapper.CUserBalanceMapper;
 import com.ruoyi.system.service.ICAuthService;
 import com.ruoyi.system.service.ICTokenService;
 
@@ -36,6 +37,9 @@ public class CAuthServiceImpl implements ICAuthService
 
     @Autowired
     private CUserMapper cUserMapper;
+
+    @Autowired
+    private CUserBalanceMapper cUserBalanceMapper;
 
     @Autowired
     private ICTokenService tokenService;
@@ -156,6 +160,14 @@ public class CAuthServiceImpl implements ICAuthService
     public CUser getUserInfo(Long userId)
     {
         return requireActiveUser(userId);
+    }
+
+    @Override
+    public Map<String, Object> getUserBalance(Long userId)
+    {
+        requireActiveUser(userId);
+        var balance = cUserBalanceMapper.selectByUserId(userId);
+        return Map.of("balance", balance == null ? 0 : balance.getBalance());
     }
 
     @Override

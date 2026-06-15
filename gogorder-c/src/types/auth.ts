@@ -13,6 +13,10 @@ export interface UserUpdateRequest {
   avatar: string
 }
 
+export interface UserBalance {
+  balance: number
+}
+
 export interface LoginResult {
   token: string
   userInfo: UserInfo
