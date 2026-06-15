@@ -131,6 +131,7 @@ public class CCartServiceImpl implements ICCartService
         {
             return cart;
         }
+        redisTemplate.expire(cartKey(userId, shopId), CART_TTL_SECONDS, java.util.concurrent.TimeUnit.SECONDS);
         List<CCartItem> items = entries.entrySet().stream()
                 .filter(entry -> String.valueOf(entry.getKey()).startsWith(ITEM_PREFIX))
                 .map(entry -> JSON.parseObject(String.valueOf(entry.getValue()), CCartItem.class))

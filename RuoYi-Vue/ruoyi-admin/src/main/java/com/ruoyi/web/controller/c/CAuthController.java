@@ -7,7 +7,9 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import com.ruoyi.common.annotation.RateLimiter;
 import com.ruoyi.common.core.domain.AjaxResult;
+import com.ruoyi.common.enums.LimitType;
 import com.ruoyi.common.utils.ip.IpUtils;
 import com.ruoyi.system.domain.dto.CSendSmsRequest;
 import com.ruoyi.system.domain.dto.CSmsLoginRequest;
@@ -23,12 +25,14 @@ public class CAuthController
     private ICAuthService authService;
 
     @PostMapping("/send-sms")
+    @RateLimiter(key = "c:auth:send-sms:", time = 60, count = 20, limitType = LimitType.IP)
     public AjaxResult sendSms(@Validated @RequestBody CSendSmsRequest request)
     {
         return AjaxResult.success(authService.sendSms(request.getPhone(), IpUtils.getIpAddr()));
     }
 
     @PostMapping("/login-by-sms")
+    @RateLimiter(key = "c:auth:login-by-sms:", time = 60, count = 30, limitType = LimitType.IP)
     public AjaxResult loginBySms(@Validated @RequestBody CSmsLoginRequest request)
     {
         return AjaxResult.success(authService.loginBySms(request.getPhone(), request.getCode()));

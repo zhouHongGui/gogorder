@@ -71,6 +71,10 @@
     <select id="selectByOrderNo" parameterType="String" resultMap="BizOrderResult">
         <include refid="selectOrderColumns"/> where order_no = #{orderNo}
     </select>
+    <select id="countPendingOrdersByUserId" parameterType="Long" resultType="int">
+        select count(1) from biz_order
+        where user_id = #{userId} and order_status = 0 and pay_status = 0
+    </select>
     <select id="selectUserOrderList" resultMap="BizOrderResult">
         <include refid="selectOrderColumns"/>
         <include refid="userOrderFilter"/>

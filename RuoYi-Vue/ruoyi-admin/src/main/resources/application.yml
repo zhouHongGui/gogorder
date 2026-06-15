@@ -12,6 +12,10 @@ gogorder:
   addressEnabled: false
   # 验证码类型 math 数字计算 char 字符验证
   captchaType: math
+  order:
+    pay-timeout-minutes: ${ORDER_PAY_TIMEOUT_MINUTES:15}
+    max-pending-orders-per-user: ${ORDER_MAX_PENDING_PER_USER:3}
+    timeout-batch-size: ${ORDER_TIMEOUT_BATCH_SIZE:100}
 
 # 开发环境配置
 server:
@@ -97,21 +101,24 @@ token:
   # 令牌自定义标识
   header: Authorization
   # 令牌密钥
-  secret: ${TOKEN_SECRET:change-this-token-secret}
+  secret: ${TOKEN_SECRET}
   # 令牌有效期（默认30分钟）
   expireTime: 30
 
 # C端认证配置
 c-auth:
   jwt:
-    secret: ${C_TOKEN_SECRET:${TOKEN_SECRET:change-this-token-secret}}
+    secret: ${C_TOKEN_SECRET:${TOKEN_SECRET}}
     expire-days: 7
   sms:
     # 开发环境返回 mockCode；生产环境关闭后需接入真实短信服务
-    mock-enabled: ${C_SMS_MOCK_ENABLED:true}
+    mock-enabled: ${C_SMS_MOCK_ENABLED:false}
   wechat:
     app-id: ${WECHAT_MINI_APP_ID:}
     app-secret: ${WECHAT_MINI_APP_SECRET:}
+
+cors:
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:80}
 
 # MyBatis配置
 mybatis:

@@ -1,5 +1,6 @@
 package com.ruoyi.framework.web.service;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
@@ -22,6 +23,7 @@ import com.ruoyi.common.utils.uuid.IdUtils;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
+import jakarta.annotation.PostConstruct;
 import jakarta.servlet.http.HttpServletRequest;
 
 /**
@@ -42,6 +44,8 @@ public class TokenService
     @Value("${token.secret}")
     private String secret;
 
+    private byte[] signingKey;
+
     // 令牌有效期（默认30分钟）
     @Value("${token.expireTime}")
     private int expireTime;
@@ -54,6 +58,16 @@ public class TokenService
 
     @Autowired
     private RedisCache redisCache;
+
+    @PostConstruct
+    public void validateSecret()
+    {
+        signingKey = secret == null ? new byte[0] : secret.getBytes(StandardCharsets.UTF_8);
+        if (signingKey.length < 64)
+        {
+            throw new IllegalStateException("TOKEN_SECRET must contain at least 64 UTF-8 bytes");
+        }
+    }
 
     /**
      * 获取用户身份信息
@@ -180,7 +194,7 @@ public class TokenService
     {
         String token = Jwts.builder()
                 .setClaims(claims)
-                .signWith(SignatureAlgorithm.HS512, secret).compact();
+                .signWith(SignatureAlgorithm.HS512, signingKey).compact();
         return token;
     }
 
@@ -193,7 +207,7 @@ public class TokenService
     private Claims parseToken(String token)
     {
         return Jwts.parser()
-                .setSigningKey(secret)
+                .setSigningKey(signingKey)
                 .parseClaimsJws(token)
                 .getBody();
     }

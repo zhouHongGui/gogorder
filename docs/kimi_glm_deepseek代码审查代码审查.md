@@ -1,0 +1,724 @@
+# gogorder 点餐系统代码审查报告
+
+- **审查范围**：已完成的「下单 → 库存 → 支付 → 取消/退款 → 超时回收」核心交易链路（M08），含后端 Java（若依框架二次开发）与 C 端 uni-app。
+- **审查方**：GLM
+- **审查日期**：2026-06-15
+- **项目背景**：由 Claude Code + DeepSeek 担任产品/架构设计，Codex 担任编码实现。
+
+---
+
+## 一、总体评价
+
+整体实现质量**明显高于一般 AI 生成代码**。交易链路最棘手的几个点——并发下单防重、库存原子扣减与幂等恢复、支付幂等与取餐码生成、余额账实一致——基本都做对了，可以看出经过了多轮架构审查迭代（`docs/M08-架构审查反馈-Codex.md` 里 P0-1/P0-2 已落地）。
+
+但仍有若干**真实缺陷**，集中在三类：① 全局异常处理的安全与日志策略；② 锁策略自相矛盾导致的冗余/死代码；③ 设计文档与实现的偏差、以及下单链路的限流/死库存隐患。
+
+下面按「编码实现（Codex）」与「产品设计（DeepSeek / Claude Code）」两条线分别列出问题，并标注严重级别。
+
+> 级别说明：P1=应尽快修；P2=建议修；P3=优化项。
+
+---
+
+## 二、编码实现问题（Codex）
+
+### 🔴 P1-1　全局异常处理器向客户端泄露内部错误信息
+
+**文件**：`ruoyi-framework/.../web/exception/GlobalExceptionHandler.java:100-106, 111-117`
+
+```java
+@ExceptionHandler(RuntimeException.class)
+public AjaxResult handleRuntimeException(RuntimeException e, ...) {
+    ...
+    return AjaxResult.error(e.getMessage());   // ← NPE / SQL 异常的 message 原样外泄
+}
+@ExceptionHandler(Exception.class)
+public AjaxResult handleException(Exception e, ...) {
+    ...
+    return AjaxResult.error(e.getMessage());   // ← 同上
+}
+```
+
+**问题**：未捕获的业务异常（如 `NullPointerException`、MyBatis `BadSqlGrammarException`、连接超时等）会把堆栈/SQL/类名等内部信息通过 `e.getMessage()` 直接返回给前端，属于**信息泄露**，既不安全也暴露实现细节。
+
+**修复**：对非 `ServiceException` 的兜底分支统一返回「系统繁忙，请稍后重试」，原始 message 仅记日志：
+```java
+return AjaxResult.error(HttpStatus.ERROR, "系统繁忙，请稍后重试");
+```
+
+---
+
+### 🔴 P1-2　业务异常以 ERROR 级别 + 完整堆栈刷日志
+
+**文件**：`GlobalExceptionHandler.java:59-61`
+
+```java
+@ExceptionHandler(ServiceException.class)
+public AjaxResult handleServiceException(ServiceException e, ...) {
+    log.error(e.getMessage(), e);   // ← 业务异常打 ERROR + 堆栈
+    ...
+}
+```
+
+**问题**：`ServiceException` 是**预期内的业务校验失败**（余额不足、库存不足、门店已关门…），属于正常流量而非系统故障。用 `log.error(..., e)` 会把每一次「余额不足」都写成一条带堆栈的 ERROR，在真实流量下会**淹没真正的系统故障**，且 `data` 字段（balance/required）也没进日志不利于排查。
+
+**修复**：业务异常降为 `log.warn`（不带堆栈，或仅在 debug 级别带），并打印关键上下文：
+```java
+log.warn("业务异常: uri={}, msg={}, code={}", request.getRequestURI(), e.getMessage(), e.getCode());
+```
+
+---
+
+### 🔴 P1-3　下单接口无限流，限量商品可被「占库存」攻击
+
+**文件**：`ruoyi-admin/.../web/controller/c/COrderController.java:29-33`
+
+```java
+@PostMapping("/submit")
+public AjaxResult submit(@Validated @RequestBody OrderSubmitRequest request) {
+    return AjaxResult.success(orderService.submitOrder(currentUserId(), request));
+}
+```
+
+**问题**：下单接口**没有** `@RepeatSubmit` / `@RateLimiter`。虽然 `submitToken` 保证「同一 token 幂等」，但攻击者/异常客户端只要每次换一个 token，就能**反复下单**。每次下单都会立即扣减库存（见 P2/D3），直到 15 分钟超时 + 每分钟扫描才归还。对一款**有限库存的爆款**，恶意用户可在 15 分钟内下出大量订单把库存锁死，使真实买家持续看到「售罄」。
+
+**修复**：对 `/api/c/order/submit` 加用户级限流（如 `@RateLimiter` 或 Redis 计数），并对单用户「待支付订单数」设上限（例如 ≤3），超出拒绝下单。
+
+---
+
+### 🟠 P2-1　支付/退款锁策略自相矛盾：悲观锁 + 乐观锁同时上，乐观重试永不触发
+
+**文件**：`ruoyi-system/.../service/impl/PaymentTransactionService.java:87-117`；`OrderCancelServiceImpl.java:103-122`
+
+```java
+CUserBalance balance = cUserBalanceMapper.selectByUserIdForUpdate(userId);  // ① 悲观行锁，持锁到事务结束
+...
+for (int retry = 0; retry < 3; retry++) {
+    int rows = cUserBalanceMapper.updateBalance(userId, -total, balance.getVersion()); // ② 乐观锁 + 版本号
+    if (rows > 0) { afterBalance = ...; break; }
+    ... // ③ 重查、重试
+}
+```
+
+**问题**：① 已经用 `SELECT ... FOR UPDATE` 拿到行锁，本事务内该行不会被任何其他事务修改，因此 ② 的 `version` 校验**必然成功**，③ 的重试循环**永远不会触发**，是死代码。两套锁并存让阅读者误以为存在并发场景需要重试，意图混乱、维护成本高。
+
+**修复**：二选一。推荐保留**悲观锁**（与订单行 `selectByIdForUpdate` 一致，简单可靠），删除 `version` 参数与重试循环，直接 `updateBalance` 一次即可：
+```java
+CUserBalance balance = cUserBalanceMapper.selectByUserIdForUpdate(userId);
+// 余额校验 ...
+cUserBalanceMapper.deductBalance(userId, total);   // 无需 version
+afterBalance = balance.getBalance() - total;
+```
+
+---
+
+### 🟠 P2-2　超时扫单查询缺复合索引，每分钟一次的扫描会随数据量退化
+
+**文件**：`BizOrderMapper.xml:102-106`；表索引见 `gogorder_v1_0_business_schema.sql:254-262`
+
+```sql
+-- 查询条件
+where order_status = 0 and pay_status = 0 and create_time < #{deadline} and id > #{minId}
+order by id asc limit #{limit}
+```
+
+**问题**：该查询由定时任务 `PaymentTimeoutTask` **每分钟**执行一次，过滤维度是 `(order_status, pay_status, create_time)`，但 `biz_order` 上只有 `idx_create_time(create_time)`，没有覆盖前两个等值条件的复合索引。随着订单量增长，扫描行数与回表成本会持续上升。
+
+**修复**：新增复合索引：
+```sql
+ALTER TABLE biz_order ADD KEY idx_timeout_sweep (order_status, pay_status, create_time, id);
+```
+
+---
+
+### 🟠 P2-3　取餐号分配早于余额校验，多一次往返且白白持锁
+
+**文件**：`PaymentTransactionService.java:69-96`
+
+```java
+bizOrderMapper.allocatePickupDisplay(shopId, pickupDate);   // ① 先分配取餐展示号
+int sequence = bizOrderMapper.selectPickupSeq(shopId, pickupDate);
+...
+CUserBalance balance = cUserBalanceMapper.selectByUserIdForUpdate(userId);  // ② 才查余额
+if (balance.getBalance() < total) throw new ServiceException("余额不足");   // ③ 余额不足则回滚
+```
+
+**问题**：① 的 `INSERT ... ON DUPLICATE KEY UPDATE` 会对 `pickup_sequence(shop_id, pickup_date)` 行加锁。若随后 ③ 余额不足，整个 `REQUIRES_NEW` 事务回滚（不会产生号段空洞，这点是好的），但**白白持有了取餐号行锁、多了一次 DB 往返**。同一门店的并发支付会因此串行得更久。
+
+**修复**：调整顺序——**先做余额校验，再分配取餐号**；或把 `allocatePickupDisplay` 与 `selectPickupSeq` 合并为一次调用（用 `INSERT ... ON DUPLICATE KEY UPDATE current_seq=LAST_INSERT_ID(current_seq+1)` + `SELECT LAST_INSERT_ID()`）减少一次往返。
+
+---
+
+### 🟡 P3-1　前端 request.ts 默认自动弹 toast，与调用方的自定义错误处理冲突
+
+**文件**：`gogorder-c/src/utils/request.ts:22-48`；调用方 `pages/order/confirm.vue:187-209`
+
+```ts
+const { showErrorToast = true, ... } = options      // 默认 true
+...
+if (body.code !== 200) {
+    if (showErrorToast) uni.showToast({ title: body.msg })   // ← 自动弹
+    reject(new ApiRequestError(...))
+}
+```
+
+**问题**：支付失败（如余额不足）时，request.ts 会**先自动弹一个「余额不足」toast**，随后 `confirm.vue` 的 `formatOrderError` 又构造了带「当前余额 ¥X，需支付 ¥Y」的富文本跳转结果页。用户会看到**两次提示**，且通用 toast 抢在富文本之前，削弱了 P0-1 修好 `data` 字段后的体验收益。
+
+**修复**：涉及自定义错误处理的调用（submit/pay）传 `showErrorToast: false`；或在 request 层对「带 data 的业务错误」不弹 toast。
+
+> **【修正】此条为误报。** `gogorder-c/src/api/order.ts` 中 `submitOrder` 与 `payOrder` 已设置 `showErrorToast: false`，实际不会触发二次 toast。
+
+---
+
+### 🟡 P3-2　`currentUserId()` 在多个 C 端 Controller 中重复
+
+**文件**：`COrderController.java:62-70`、`CCartController.java:57-65`（及大概率还有 `CUserController` 等）
+
+**问题**：完全相同的「从 request 属性取 userId、为空抛 401」逻辑被复制粘贴。
+
+**修复**：抽到一个 `CBaseController` 或 `CAuthUtils.currentUserId()` 工具方法，统一复用。
+
+---
+
+### 🟡 P3-3　`OrderItemRequest.specs` 为无界 Map，缺大小限制
+
+**文件**：`ruoyi-system/.../domain/dto/OrderItemRequest.java:13`
+
+```java
+private Map<String, Object> specs;   // 无 @Size
+```
+
+**问题**：规格 map 没有大小上限，恶意/异常的大 payload 会进入 `SpecValidationServiceImpl.normalizeSpecs` 的逐项解析，并最终 `JSON.toJSONString` 写入订单快照。配合「每单 ≤20 项、单项 ≤99」限制可缓解，但 specs 本身仍是无界的。
+
+**修复**：加 `@Size(max = 16)`（与实际规格模板数量匹配），并在 `normalizeSpecs` 内对 key/value 做基本长度校验。
+
+---
+
+### 🟡 P3-4　订单号生成依赖「秒级时间 + 6 位随机」，仅 3 次重试
+
+**文件**：`OrderServiceImpl.java:356-360, 164-191`
+
+```java
+private String generateOrderNo() {
+    return LocalDateTime.now().format(ORDER_NO_TIME)   // yyyyMMddHHmmss
+            + String.format("%06d", ThreadLocalRandom.current().nextInt(1_000_000));
+}
+```
+
+**问题**：同一秒内只有 10⁶ 个候选号，碰撞靠 `uk_order_no` + 3 次重试兜底。当前奶茶店量级足够，但秒级突发（促销/秒杀）下可能**耗尽重试**，抛「订单创建失败」。
+
+**修复**：中长期建议改用雪花 ID 或门店日内 DB 序列（与 `pickup_display` 类似），消除碰撞面。
+
+---
+
+## 三、产品设计/文档问题（DeepSeek + Claude Code）
+
+> 以下不是代码 bug，而是**设计与实现的偏差**或**需求留白**，需 PM 与开发对齐。
+
+### 🟠 D1　包装费（packFee）计费语义未定义
+
+`OrderServiceImpl.java:124` 用 `packFee = shop.packFee * totalQuantity`（按杯/按件计费），前端 `confirm.vue:109` 与之一致。但 `Shop.packFee` 字段与 PRD 均未说明是**每杯**还是**每单**。若 PM 本意是「每单固定包装费」，则当前实现会**系统性多收**（10 杯收 10 份包装费）。
+
+**建议**：在 M02/M08 文档与 `Shop` 实体注释中明确 `pack_fee` 的计价单位，并对齐前后端。
+
+> **【修正】此条为误报。** 数据库字段注释（`pack_fee` 分/杯）与 M08 文档均已明确包装费按杯计费，实现与文档一致。
+
+---
+
+### 🟠 D2　购物车「门店不一致返回 SHOP_MISMATCH」设计与实现不符
+
+`CLAUDE.md` 明确：「添加接口 shopId 必传，门店不一致返回 `SHOP_MISMATCH` 错误码（**不清空**）」。但实现 `CCartServiceImpl` 用 `cart:{userId}:{shopId}` 做 key，**每个门店一个独立购物车**，根本不存在「单购物车内门店不一致」的场景，自然也没有 `SHOP_MISMATCH` 分支。
+
+**影响**：用户在不同门店加车后会**沉淀多份购物车**，切回旧门店仍能看到旧车。这与「单一购物车 + 跨店拦截」的产品预期不同。
+
+**建议**：PM 确认是「每店一车」（则更新文档去掉 SHOP_MISMATCH 描述）还是「单购物车 + 跨店拦截」（则改造实现）。两种方案都成立，但不能文档一套、代码一套。
+
+> **【修正】此条为误报。** M07、M13 及 AGENTS 已明确采用「每门店独立购物车」方案，实现与最新文档一致；仅 `CLAUDE.md` 中过时描述未更新。
+
+---
+
+### 🟡 D3　「下单即扣库存 + 15 分钟超时」的死库存窗口
+
+设计上**下单就扣库存**（`OrderServiceImpl` 在 `doSubmitOrder` 内 `deductStock`），未支付订单要等 `PaymentTimeoutTask`（cron 每分钟 + 15 分钟阈值）才取消并归还。这意味着限量商品存在**最长约 16 分钟被未支付订单锁定**的窗口；叠加 P1-3（下单无限流），该窗口可被放大成实际的「售罄」攻击。
+
+**建议**：V1.0 可接受，但应配合 P1-3 的限流；或考虑对高价值/限量商品改为「支付成功后才扣库存」（需在 M08 文档中权衡超卖 vs 死库存）。
+
+---
+
+### 🟡 D4　submit 与 pay 拆成两次客户端调用，「待支付订单」的用户引导需明确
+
+下单（`/submit`）与支付（`/pay/{orderId}`）是两个独立 HTTP 调用。幂等设计允许重试（很好），但代价是会产生一批「已下单未支付」的订单。这些订单会出现在订单列表（`getOrderList` 按 create_time 维度返回全部），需确认 M09 订单中心是否清晰地：
+
+- 区分「待支付」态并突出「去支付 / 取消」入口；
+- 在订单过期前给用户可见的超时倒计时。
+
+否则用户会困惑于一批「卡住」的订单。
+
+---
+
+## 四、值得肯定的地方（避免一边倒）
+
+为公允起见，以下几点实现是**正确且高质量**的，建议保留风格：
+
+1. **金额运算全程 `Math.addExact / multiplyExact`**，主动防溢出（`OrderServiceImpl:98-130`）。
+2. **幂等键体系完整**：下单 `submit_key`、库存 `{orderId}:{shopProductId}:{DEDUCT|RESTORE}`、支付 `orderId:pay`、退款 `orderId:refund`、余额 `orderId:balance:PAY|REFUND`，且各流水表均有 `uk_idempotent`。
+3. **库存条件 UPDATE + 流水 + 无限库存边界**：`changeOrderStock` 用 `WHERE stock >= qty` 原子扣减防超卖，并针对「无限库存 -1」的 `useAffectedRows` 0 行返回做了专门处理（`ProductCenterServiceImpl:573-579` 注释清楚）。
+4. **取餐号双字段分离**：`pickup_token`（全局唯一核销码）与 `pickup_display`（门店日内流水）分离，且分配在事务内、失败回滚无空洞（`PaymentTransactionService:69-85`）。
+5. **并发支付防重**：`selectByIdForUpdate` 行锁 + 已支付幂等返回，杜绝重复扣款（`PaymentTransactionService:43-58`）。
+6. **规格价格后端重算 + 完整快照**：不信任前端价格，下单做 optionId+label+priceAdd 快照（`SpecValidationServiceImpl`）。
+7. **超时回收任务**批处理 + `id` 游标分页，避免一次性锁大量订单（`PaymentTimeoutTask`）。
+
+---
+
+## 五、修复优先级建议
+
+| 优先级 | 项 | 归属 |
+|--------|-----|------|
+| **立即修** | P1-1 异常信息泄露、P1-2 日志策略、P1-3 下单限流 | Codex（P1-3 需 PM 确认阈值）|
+| **本迭代修** | P2-1 锁策略精简、P2-2 索引、P2-3 取餐号顺序 | Codex |
+| **对齐后修** | — | — |
+| **择机优化** | P3-2~P3-4、D3/D4 | Codex / PM |
+
+> **说明**：D1（包装费语义）、D2（购物车模型）经核对为文档/实现一致，仅 `CLAUDE.md` 过时，已从"对齐后修"移除。P3-1 已验证为误报（见第八节）。
+
+---
+
+## 六、Kimi 补充审查（GLM 未发现的问题）
+
+> 以下是在 GLM 审查报告基础上，针对同一代码库进一步审查后发现的**新增问题**。为避免重复，GLM 已列出的 P1-3 / D1-4 不再赘述。
+
+---
+
+## 编码实现问题（Codex）
+
+### 🔴 K-P1-1　被禁用用户仍可下单/支付
+
+**文件**：`ruoyi-system/.../service/impl/OrderServiceImpl.java:65`；`ruoyi-framework/.../interceptor/CAuthInterceptor.java:44-47`
+
+```java
+// CAuthInterceptor 仅解析 token 并把 userId 塞进 request
+CAuthPrincipal principal = tokenService.parseToken(...);
+request.setAttribute(CAuthConstants.USER_ID_ATTRIBUTE, principal.getUserId());
+
+// OrderServiceImpl 直接拿 userId 下单，未校验用户状态
+public OrderSubmitResponse submitOrder(Long userId, OrderSubmitRequest request)
+```
+
+**问题**：`CAuthInterceptor` 只负责 JWT 解析，**不查库校验 `c_user.status`**；`OrderServiceImpl.submitOrder` 和 `PaymentTransactionService` 也都没有校验用户是否被禁用。token 有效期 7 天，运营在管理后台把用户禁用后，该用户在这 7 天内**仍然可以正常下单、支付、取消订单**。
+
+**修复**：
+- 方案 A（推荐）：`CAuthInterceptor` 解析 token 后查询 `c_user`，`status != 1` 直接返回 401/403，让所有 C 端接口统一失效。
+- 方案 B：在 `OrderServiceImpl.submitOrder`、`PaymentTransactionService.payAttempt`、`BalanceServiceImpl.pay` 等关键入口增加 `requireActiveUser(userId)` 校验。
+
+---
+
+### 🔴 K-P1-2　短信 mock 模式默认开启，生产环境可任意登录
+
+**文件**：`ruoyi-system/.../service/impl/CAuthServiceImpl.java:50-84`
+
+```java
+@Value("${c-auth.sms.mock-enabled:true}")   // ← 默认 true
+private boolean smsMockEnabled;
+...
+if (smsMockEnabled) {
+    result.put("mockCode", code);   // ← 直接把验证码返回给前端
+    return result;
+}
+throw new ServiceException("短信服务尚未配置");
+```
+
+**问题**：`sendSms` 在 mock 模式下会把真实验证码通过接口返回给调用方。若部署到生产时**忘记将 `c-auth.sms.mock-enabled` 显式置为 false**，攻击者只需先调用 `/api/c/auth/send-sms` 拿到 `mockCode`，再调用 `/api/c/auth/login-by-sms` 即可登录任意手机号，严重破坏账号体系。
+
+**修复**：默认值改为 `false`；或在应用启动时若 `mock-enabled=true` 且 `spring.profiles.active=prod` 直接抛异常阻止启动。
+
+---
+
+### 🟠 K-P2-1　Spring Security 对 `/api/c/**` 全局 permitAll，认证完全依赖 Interceptor
+
+**文件**：`ruoyi-framework/.../config/SecurityConfig.java:103-104`；`ruoyi-framework/.../config/ResourcesConfig.java:52-58`
+
+```java
+// SecurityConfig
+.requestMatchers("/api/c/**").permitAll()   // ← Spring Security 完全放行
+
+// ResourcesConfig
+registry.addInterceptor(cAuthInterceptor)
+        .addPathPatterns("/api/c/**")
+        .excludePathPatterns("/api/c/auth/**", ...); // ← 由 Interceptor 补做 JWT 认证
+```
+
+**问题**：C 端认证由 `CAuthInterceptor` 负责，而 Spring Security 已经把 `/api/c/**` 全部 permitAll。功能上当前能跑通，但**防御纵深不足**：一旦 `CAuthInterceptor` 因配置失误被移除、路径遗漏、或 `addInterceptors` 顺序被调整导致绕过，`/api/c/order/submit`、`/api/c/order/pay/**` 等接口将对匿名用户完全开放。
+
+**修复**：不能直接改为 `.authenticated()`，因为 C 端 JWT 尚未接入 Spring Security 的 AuthenticationProvider。可行方案：
+- 方案 A（推荐）：新增一个 `CAuthTokenFilter`（继承 `OncePerRequestFilter`），在 Spring Security filter 链中解析 C 端 Bearer Token，构建 `Authentication` 并放入 `SecurityContext`；然后 Spring Security 配置 `.requestMatchers("/api/c/**").authenticated()`。
+- 方案 B：保持当前 Interceptor 方案，但在 `ResourcesConfig.addInterceptors` 中增加兜底断言或单测，确保 `CAuthInterceptor` 路径不被意外移除；同时在 Spring Security 中对敏感子路径（如 `/api/c/order/**`）单独配置 `denyAll` 以外的强制认证（需要配合 filter）。
+
+> **注意**：当前 C 端 token 体系独立于若依 JWT filter，简单把 `/api/c/**` 改为 `.authenticated()` 会导致所有 C 端请求被 401。
+
+---
+
+### 🟠 K-P2-2　支付接口没有限流/防重提交
+
+**文件**：`ruoyi-admin/.../web/controller/c/COrderController.java:35-39`
+
+```java
+@PostMapping("/pay/{orderId}")
+public AjaxResult pay(@PathVariable Long orderId) {
+    return AjaxResult.success("支付成功", balanceService.pay(currentUserId(), orderId));
+}
+```
+
+**问题**：GLM 只提到下单无限流，但**支付接口同样无限流**。虽然业务层通过 `payment_ledger` 和订单行锁实现了幂等，但恶意/异常客户端可以高频请求 `/api/c/order/pay/{orderId}`：
+- 对同一用户余额行频繁加 `FOR UPDATE`，影响其他正常支付；
+- 对 `pickup_sequence` 行频繁加锁（取餐号分配），拖累同门店其他用户支付；
+- 日志中刷大量 "订单状态不允许支付" 业务异常。
+
+**修复**：对 `/api/c/order/pay/{orderId}` 加 `@RepeatSubmit` 和用户级 `@RateLimiter`（如 10 秒 1 次）。
+
+---
+
+### 🟠 K-P2-3　超时取消定时任务缺少分布式锁，多实例会重复扫描
+
+**文件**：`ruoyi-quartz/.../task/PaymentTimeoutTask.java:22-56`
+
+```java
+public void cancelTimeoutOrders()
+{
+    LocalDateTime deadline = LocalDateTime.now().minusMinutes(15);
+    long minId = 0L;
+    ...
+    while (true) {
+        List<BizOrder> batch = bizOrderMapper.selectPendingTimeoutOrders(deadline, minId, BATCH_SIZE);
+        for (BizOrder order : batch) {
+            orderCancelService.cancelTimeoutOrder(order.getId()); // ← 多实例同时执行
+        }
+    }
+}
+```
+
+**问题**：`sys_job.concurrent=1` 只能限制**单个 JVM 内**同一任务不并发，无法阻止**多实例集群**同时触发。若 horizontally scale 到 2+ 节点，每分钟会有多个节点同时扫描同一批超时订单，导致：
+- 重复加锁、重复尝试取消；
+- `cancelTimeoutOrder` 是 `REQUIRES_NEW`，虽然幂等（条件 UPDATE），但会造成大量无效事务和日志噪音；
+- 极端情况下若幂等逻辑有漏洞，可能重复恢复库存。
+
+**修复**：引入 Redis 分布式锁（Redisson）或 ShedLock，如 `RLock lock = redissonClient.getLock("job:paymentTimeoutTask");`，任务开始前抢锁，执行完释放。
+
+---
+
+### 🟠 K-P2-4　短信验证码可被暴力枚举
+
+**文件**：`ruoyi-system/.../service/impl/CAuthServiceImpl.java:88-98`
+
+```java
+public Map<String, Object> loginBySms(String phone, String code)
+{
+    String cachedCode = redisCache.getCacheObject(key);
+    if (!StringUtils.equals(code, cachedCode)) {
+        throw new ServiceException("验证码错误或已过期");   // ← 验证失败不删码、不限次数
+    }
+    redisCache.deleteObject(key);
+    return buildLoginResult(findOrCreateUser(phone));
+}
+```
+
+**问题**：虽然发送阶段有 60 秒间隔和每日 10 条限制，但**验证阶段没有失败次数限制**。验证码是 6 位数字（10⁶ 种可能），攻击者拿到一次发送机会后，可以在 5 分钟有效期内持续调用 `login-by-sms` 进行暴力枚举，直到命中。
+
+**修复**：
+- 验证错误累计 3 次立即删除/作废该验证码；
+- 或增加 `c:auth:sms:verify:{phone}` 计数器，5 分钟内超过 N 次直接锁定。
+
+---
+
+### 🟠 K-P2-5　JWT 实现使用 jjwt 已弃用 API，且 HS512 对 secret 长度有硬性要求
+
+**文件**：`ruoyi-system/.../service/impl/CTokenServiceImpl.java:32-47`
+
+```java
+return Jwts.builder()
+        ...
+        .signWith(SignatureAlgorithm.HS512, secret)   // ← jjwt 0.12+ 已弃用
+        .compact();
+
+Claims claims = Jwts.parser()
+        .setSigningKey(secret)                       // ← 已弃用
+        .parseClaimsJws(token).getBody();
+```
+
+**问题**：
+1. `signWith(SignatureAlgorithm, String)` 和 `setSigningKey(String)` 在 jjwt 0.12 及以上版本已移除或标记弃用，**升级依赖后项目无法编译**。
+2. `HS512` 要求 secret 长度 **≥ 64 字节（512 位）**。若配置文件里的 secret 较短，运行时会直接抛 `WeakKeyException`，导致所有 C 端登录/请求失败。
+
+**修复**：
+- 改用 jjwt 推荐的新 API：`Jwts.builder().signWith(Keys.hmacShaKeyFor(secret.getBytes()), Jwts.SIG.HS256)...`；
+- 或降级使用 `HS256`（secret ≥ 32 字节），并在启动时校验长度。
+
+---
+
+### 🟠 K-P2-6　C 端商品列表无分页 + monthly_sales 子查询逐行计算
+
+**文件**：`ruoyi-system/.../mapper/ProductCenterMapper.xml:434-447`；`ruoyi-system/.../service/impl/CProductBrowseServiceImpl.java:44-59`
+
+```xml
+<select id="selectCShopProducts" ...>
+    select sp.id shop_product_id, ...,
+           (select coalesce(sum(oi.quantity), 0)
+            from biz_order_item oi
+            inner join biz_order bo on bo.id = oi.order_id
+            where oi.product_id = p.id and bo.shop_id = sp.shop_id
+              and bo.pay_status = 1
+              and bo.pay_time >= date_sub(sysdate(), interval 30 day)
+           ) monthly_sales
+    from shop_product sp ...
+    where sp.shop_id = #{shopId} and sp.status = 1
+    order by sp.sort_order asc, sp.id desc
+</select>
+```
+
+**问题**：
+- 列表接口**没有分页**，门店商品多时一次返回几百条；
+- 每条记录都带一个关联 `biz_order_item` + `biz_order` 的**相关子查询**计算近 30 天销量。随着订单量增长，该接口会显著变慢，且无法通过简单索引优化（子查询里 `oi.product_id` 与 `bo.shop_id` 跨表过滤）。
+
+**修复**：
+- 列表接口加分页（`pageNum`/`pageSize`）；
+- `monthly_sales` 改为异步缓存或夜间汇总表，避免实时扫大表。
+
+---
+
+### 🟡 K-P3-2　全局异常处理把参数校验异常当系统异常打 ERROR
+
+**文件**：`ruoyi-framework/.../web/exception/GlobalExceptionHandler.java:122-139`
+
+```java
+@ExceptionHandler(BindException.class)
+public AjaxResult handleBindException(BindException e) {
+    log.error(e.getMessage(), e);   // ← 参数校验失败也打 ERROR + 堆栈
+    ...
+}
+@ExceptionHandler(MethodArgumentNotValidException.class)
+public Object handleMethodArgumentNotValidException(MethodArgumentNotValidException e) {
+    log.error(e.getMessage(), e);   // ← 同上
+    ...
+}
+```
+
+**问题**：参数校验失败（如手机号格式不对、数量超过 99、备注超过 200 字）属于**预期内的客户端错误**。用 `log.error(..., e)` 会输出大量带堆栈的 ERROR，和真正的系统故障混在一起，污染日志并增加监控误报。
+
+**修复**：改为 `log.warn`，且不打印完整堆栈。
+
+---
+
+### 🟡 K-P3-3　跨域配置允许所有来源
+
+**文件**：`ruoyi-framework/.../config/ResourcesConfig.java:68-74`
+
+```java
+config.addAllowedOriginPattern("*");
+config.addAllowedHeader("*");
+config.addAllowedMethod("*");
+```
+
+**问题**：当前 CORS 配置允许任意 Origin 访问。虽然小程序/H5 开发方便，但生产环境若被恶意网站利用，可能产生 CSRF-like 风险（CORS 不是 CSRF 防御，但过度宽松的配置会降低攻击门槛）。
+
+**修复**：生产配置通过 `application-prod.yml` 注入允许的 origin 列表，禁止 `*`。
+
+---
+
+### 🟡 K-P3-5　购物车 `getCart` 不刷新 TTL
+
+**文件**：`ruoyi-system/.../service/impl/CCartServiceImpl.java:123-143`
+
+```java
+public CCartView getCart(Long userId, Long shopId)
+{
+    Map<Object, Object> entries = redisTemplate.opsForHash().entries(cartKey(userId, shopId));
+    // 没有 EXPIRE 操作
+}
+```
+
+**问题**：购物车 key 的 7 天过期时间只在 add/update/remove 时刷新。用户每天查看购物车但 7 天内没有增删改，购物车会**在用户毫不知情的情况下自动清空**。这与"查看即活跃"的用户预期不符。
+
+**修复**：在 `getCart` 返回前对非空购物车调用 `redisTemplate.expire(cartKey, CART_TTL_SECONDS, TimeUnit.SECONDS)`。
+
+---
+
+### 🟡 K-P3-6　多处关键阈值硬编码
+
+**文件**：
+- `PaymentTransactionService.java:64`：`minusMinutes(15)`
+- `PaymentTimeoutTask.java:24`：`minusMinutes(15)`
+- `PaymentTransactionService.java:81`：`sequence > 99999`
+
+**问题**：15 分钟支付超时、99999 日取餐号上限都散落在代码中。若运营需要调整（大促放宽到 30 分钟、取餐号扩容到 6 位），容易漏改某一处，导致支付接口与定时任务阈值不一致，或取餐号溢出。
+
+**修复**：抽到 `application.yml` / `GogorderConfig`，如 `gogorder.order.pay-timeout-minutes`、`gogorder.order.pickup-display-max`。
+
+---
+
+## 产品设计/文档问题（DeepSeek + Claude Code）
+
+### 🟠 K-D1　`CLAUDE.md` 项目状态与实现严重不符
+
+**文件**：`gogorder/CLAUDE.md`
+
+**问题**：`CLAUDE.md` 中明确写明：
+- "**当前阶段：PRD 文档全部完成，尚未开始编码**。"
+- 项目结构应为 `gogorder-server/`、`gogorder-admin/`、`gogorder-c/`。
+
+但实际仓库中后端在 `RuoYi-Vue/` 目录下，且 M05-M08 已经编码完成。新成员或后续 AI 接手时会被文档误导，不知道该从哪继续、目录结构为何不一致。
+
+**建议**：更新 `CLAUDE.md`，将"当前阶段"改为"M08 已编码完成，进入审查/修复阶段"；并修正项目结构描述为实际的 `RuoYi-Vue/` + `gogorder-c/`。
+
+---
+
+## 七、补充修复优先级建议
+
+| 优先级 | 项 | 归属 | 备注 |
+|--------|-----|------|------|
+| **立即修** | K-P1-1 禁用用户仍可下单/支付、K-P1-2 短信 mock 默认开启 | Codex | 安全/数据一致性风险 |
+| **本迭代修** | K-P2-1 Spring Security 认证兜底、K-P2-2 支付限流、K-P2-3 定时任务分布式锁、K-P2-4 验证码防爆破、K-P2-5 JWT 弃用 API、K-P2-6 商品列表分页/销量优化 | Codex | 安全/性能/可维护性 |
+| **择机优化** | K-P3-2~K-P3-6、K-D1 | Codex / PM | 日志、配置化、CORS、购物车 TTL、文档 |
+
+---
+
+## 八、误报与已修复澄清
+
+| 原编号 | 说明 | 结论 |
+|--------|------|------|
+| GLM P3-1 | `api/order.ts` 中 `submitOrder` / `payOrder` 已设置 `showErrorToast: false` | **误报** |
+| GLM D1 | 数据库字段注释与 M08 文档已明确 `pack_fee` 为"分/杯" | **误报** |
+| GLM D2 | M07/M13/AGENTS 已明确采用每门店独立购物车，仅 `CLAUDE.md` 过时 | **误报**（实现正确，文档需更新） |
+| Kimi K-P1-3 | `findOrCreateUser()` 仅被 `loginBySms` / `bindWechatPhone` 两个 `@Transactional` 方法调用，用户与余额账户创建处于同一事务 | **误报** |
+| Kimi K-P2-1 | 风险描述成立，但直接改 `.authenticated()` 会 401，需新增 `CAuthTokenFilter` 接入 Spring Security | **部分成立，修法已修正** |
+| Kimi K-P2-7 | `Integer.valueOf(0).equals(product.getStock())` 本身就是空安全比较 | **误报** |
+| Kimi K-P3-1 | 取餐号已改为 `A001...Z999` 格式，SQL 和文档已同步 | **已修复** |
+| Kimi K-P3-4 | `result.vue` 已提供"重新支付"按钮，订单详情也有支付/取消入口 | **已修复/误报** |
+
+---
+
+## 九、最终复核（GLM · 2026-06-15）
+
+> 本节为 GLM 对 Kimi 二次审查/修订结果的**独立复核**：逐条对照源码核实「第八节澄清表」与「剩余仍成立清单」，纠正其中的事实偏差，并给出收口优先级。
+
+### A. 复核方法
+对每一条「误报 / 已修复」结论与「仍成立」结论，回到对应源码文件确认，不以文档自述为准。
+
+### B. 澄清表复核（第八节，逐条成立）
+
+| 原编号 | 复核依据 | 结论 |
+|--------|----------|------|
+| GLM P3-1（误报） | `gogorder-c/src/api/order.ts:15,21` 中 `submitOrder`/`payOrder` 确已设 `showErrorToast:false` | ✅ 成立 |
+| GLM D1（误报） | `business_schema.sql:107` shop.pack_fee 注释为「分/杯」，`M08:1499` 明确「每杯包装费」 | ✅ 成立（本人原查漏了 schema 注释）|
+| GLM D2（误报） | 实现为每门店独立购物车，与 M07/M13 设计一致 | ✅ 成立（仅 CLAUDE.md 过时）|
+| Kimi K-P1-3（误报） | `findOrCreateUser` 仅被两个 `@Transactional` 方法调用 | ✅ 成立 |
+| Kimi K-P2-1（修法修正） | `/api/c/**` 在 SecurityConfig:104 确为 `permitAll`；直接改 `.authenticated()` 会 401 | ✅ 成立 |
+| Kimi K-P2-7（误报） | `Integer.valueOf(0).equals(null)` 空安全 | ✅ 成立 |
+| Kimi K-P3-1（已修复） | `PaymentTransactionService:147-157` `formatPickupDisplay` 已改为 `A001…Z999` | ✅ 成立 |
+| Kimi K-P3-4（已修复） | `result.vue:22` 已有「重新支付」按钮 | ✅ 成立 |
+
+**Kimi 的二审定性整体准确，无错杀。**
+
+### C. 仍成立问题复核（逐一对照代码确认，全部成立）
+
+| 编号 | 复核证据 | 状态 |
+|------|----------|------|
+| K-P1-1 禁用用户仍可下单/支付 | `CAuthInterceptor` 只解析 token 不查 `c_user.status`；`OrderServiceImpl.submitOrder`、`PaymentTransactionService.payAttempt` 均无状态校验（`requireActiveUser` 仅用于 getUserInfo/getUserBalance）| ✅ 成立 |
+| K-P1-2 短信 mock 默认开启 | `CAuthServiceImpl:50` `@Value("…mock-enabled:true")`；`application.yml:111` `${C_SMS_MOCK_ENABLED:true}` 双重默认 true，且 mock 下返回 `mockCode`（`:80`）| ✅ 成立 |
+| K-P2-1 Security 认证兜底缺失 | `SecurityConfig.java:104` `.requestMatchers("/api/c/**").permitAll()` | ✅ 成立 |
+| K-P2-2 支付无限流 | `COrderController:35` `pay` 无 `@RepeatSubmit`/`@RateLimiter` | ✅ 成立 |
+| K-P2-3 定时任务无分布式锁 | `PaymentTimeoutTask:22-56` 无 Redisson/ShedLock，仅靠 sys_job 单机并发位 | ✅ 成立 |
+| K-P2-4 验证码可暴力枚举 | `CAuthServiceImpl:88-98` loginBySms 校验失败不删码、无失败计数；码 6 位、有效期 5 分钟 | ✅ 成立 |
+| K-P2-6 商品列表无分页/销量子查询 | `ProductCenterMapper.xml:434-446` selectCShopProducts 无 limit；`:412-417` 每行相关子查询算近 30 天销量 | ✅ 成立 |
+
+### D. 本轮需修正/提级的一条：K-P2-5（JWT）
+
+Kimi 的 K-P2-5 定性有**两处事实偏差**，且**低估了真实严重度**：
+
+1. **版本前提错误**：`pom.xml:30` 实际是 `jjwt 0.9.1`，不是「0.12+」。`signWith(SignatureAlgorithm, String)` / `setSigningKey(String)` 在 0.9.1 **尚未弃用**，当前能正常编译运行——「升级依赖后无法编译」是预测性结论，不是现状。
+2. **异常现象错误**：`WeakKeyException` 是 jjwt 0.10+ 才引入的。**0.9.1 不校验 HS512 密钥长度**，短 secret 不会抛异常，只会**静默使用弱密钥**。
+
+3. **真实且更严重的问题（建议提级到 P1）**：`application.yml:107` 默认 secret 为 `change-this-token-secret`（24 字节，公开占位符），叠加 0.9.1 不强制 HS512 的 64 字节要求——若上线未覆盖 `TOKEN_SECRET`，**攻击者用已知默认密钥即可伪造任意 userId 的 C 端 JWT**，直接接管任意账号、清空其余额。这是**当下可利用的认证绕过**，比「弃用 API」严重得多。
+
+**建议修复**：① 启动时强制校验 `secret` 长度 ≥ 64 字节，未达则启动失败；② 默认值去掉明文占位符，必须由环境变量注入；③ 长期升级 jjwt 并改用 `Keys.hmacShaKeyFor` + HS256/HS512 新 API（对应 K-P2-5 原意）。
+
+### E. GLM 本轮条目复核（代码未改，仍成立）
+
+| 编号 | 复核证据 | 状态 |
+|------|----------|------|
+| P1-1 异常信息泄露 | `GlobalExceptionHandler:105,116` 仍 `return AjaxResult.error(e.getMessage())` | ✅ 成立 |
+| P1-2 业务异常 ERROR 刷日志 | `GlobalExceptionHandler:61` `log.error(e.getMessage(), e)` 未降级 | ✅ 成立 |
+| P1-3 下单无限流 | `COrderController:29` submit 无限流注解 | ✅ 成立 |
+| P2-1 锁策略自相矛盾 | `PaymentTransactionService:85`（悲观锁）+ `:97-115`（version 乐观重试）并存，重试永不触发 | ✅ 成立 |
+| P2-3 取餐号早于余额校验 | `PaymentTransactionService:81-83`（分配取餐号）仍在 `:90` 余额校验之前 | ✅ 成立 |
+
+### F. 收口优先级（合并去重后最终版）
+
+| 优先级 | 项 | 归属 |
+|--------|-----|------|
+| **立即修（安全）** | **JWT 默认弱密钥→伪造 token（K-P2-5 提级）**、K-P1-1 禁用用户可下单、K-P1-2 短信 mock 默认开、K-P2-4 验证码防爆破 | Codex |
+| **本迭代修** | K-P2-1 Security 兜底（CAuthTokenFilter）、K-P2-2/K-P1-3 下单支付限流、K-P2-3 定时任务分布式锁、K-P2-6 商品列表分页+销量优化、P1-1 异常脱敏、P1-2 日志降级 | Codex |
+| **择机优化** | P2-1 锁精简、P2-3 取餐号顺序、P2-2 超时扫单索引、P3-2/P3-3/P3-4、K-P3-2~K-P3-6、K-D1 | Codex / PM |
+
+### G. 复核结论
+- Kimi 二审对 GLM 与自身条目的「误报/已修复」判断**全部经代码核实成立**，无错杀、无遗漏；K-P2-1 修法修正合理。
+- 唯一需纠正的是 **K-P2-5（JWT）**：版本与异常前提有误，且真实风险（默认弱密钥→token 伪造）被低估，应提级为安全 P1。
+- 其余「仍成立」清单与 GLM 本轮条目经源码复核**全部属实**，可据此进入修复阶段。
+
+---
+
+## 十、Codex 修复复核（GLM · 2026-06-15）
+
+> Codex 完成修复后，GLM 逐条回到源码核实第九节 F 表「立即修 / 本迭代修 / 择机优化」是否落实，并排查修复是否引入回归。结论：**全部落实，未发现回归，修复质量高。**
+
+### A. 安全类（立即修）—— 全部通过
+
+| 项 | 修复证据 | 复核 |
+|----|----------|------|
+| K-P2-5 JWT 弱密钥（提级项）| `CTokenServiceImpl:29-37` `@PostConstruct validateSecret()` 强制 secret ≥64 字节否则启动失败；`application.yml:104,111` 改为 `${TOKEN_SECRET}`（**无占位默认值，未配置即启动失败**）；signing key 统一为 `byte[]` | ✅ 通过 |
+| K-P1-1 禁用用户可下单 | 新增 `CAuthTokenFilter:62-70`，解析 token 后 `selectById` 查 `c_user`，`status!=1` 返回 403；覆盖**所有** C 端受保护接口 | ✅ 通过 |
+| K-P1-2 sms mock 默认开 | `CAuthServiceImpl:51` `@Value("…mock-enabled:false")`；`application.yml:115` `${C_SMS_MOCK_ENABLED:false}` | ✅ 通过 |
+| K-P2-4 验证码防爆破 | `CAuthServiceImpl:93-115` 失败计数 `SMS_MAX_VERIFY_FAILURES=5`，达限删码并锁 5 分钟；重发清零 | ✅ 通过 |
+
+### B. 本迭代修 —— 全部通过
+
+| 项 | 修复证据 | 复核 |
+|----|----------|------|
+| K-P2-1 Security 兜底 | 新增 `CAuthTokenFilter`（接入 Spring Security，构建 `Authentication` 入 `SecurityContext`）；`SecurityConfig:109` `/api/c/**` 改 `.authenticated()`，`:108` 公开路径精确 permitAll；旧 `CAuthInterceptor` **已删除**（无残留死代码）| ✅ 通过 |
+| P1-3 / K-P2-2 下单支付限流 | `COrderController:32` submit `@RateLimiter(time=60,count=5,USER)`；`:39` pay `@RateLimiter(time=60,count=10,USER)`；`RateLimiterAspect` Redis Lua 计数，USER 类型经 filter 写入的 userId 维度限流 | ✅ 通过 |
+| K-P2-3 定时任务分布式锁 | `PaymentTimeoutTask:30-43` Redis `SET NX` 抢锁（TTL 10min）+ finally 释放；`RedisCache.releaseLock` 用 **owner-checked Lua**（`get==value then del`）防误删 | ✅ 通过 |
+| K-P2-6 销量子查询性能 | 新增 `selectCProductMonthlySales`（单条 GROUP BY + IN 批量），取代逐行相关子查询；列表默认 `monthly_sales=0` 占位，服务层一次性回填；patch SQL 加 `idx_shop_pay_time`、`idx_order_product` 支撑聚合 | ✅ 通过（见下方注①）|
+| P1-1 异常信息泄露 | `GlobalExceptionHandler:105,116` 兜底分支统一返回「系统繁忙，请稍后重试」，原始 message 仅入日志 | ✅ 通过 |
+| P1-2 / K-P3-2 日志降级 | `:61` 业务异常 `log.warn`（无堆栈）；`:125,136` 参数校验异常 `log.warn` | ✅ 通过 |
+
+### C. 择机优化 —— 亦全部落实（超出预期）
+
+| 项 | 修复证据 | 复核 |
+|----|----------|------|
+| P2-1 锁策略精简 | `PaymentTransactionService:84`(悲观锁)+`:95`(`updateLockedBalance`，**无 version、无重试**)，`OrderCancelServiceImpl:108` 退款同款；version 死代码已移除 | ✅ 通过 |
+| P2-3 取餐号顺序 | `PaymentTransactionService:84-99` 余额校验+扣减 → `:102-104` 才分配取餐号（顺序已反转）| ✅ 通过 |
+| P2-2 超时扫单索引 | patch SQL `idx_timeout_sweep(order_status,pay_status,id,create_time)`；另加 `idx_user_pending`、`idx_shop_pay_time`、`idx_order_product` | ✅ 通过 |
+| P3-3 specs 无界 | `OrderItemRequest:14` `@Size(max=16)` | ✅ 通过 |
+| K-P3-3 CORS 全放行 | `ResourcesConfig:64` 改为读取 `corsAllowedOrigins` 配置（按逗号分隔注入），不再硬编码 `*` | ✅ 通过 |
+| K-P3-5 cart TTL 不刷新 | `CCartServiceImpl:133` `getCart` 对非空车 `expire(CART_TTL_SECONDS)` | ✅ 通过 |
+| K-P3-6 阈值硬编码 | 新增 `GogorderOrderProperties`，支付超时/批量大小等改为配置项，`PaymentTimeoutTask`/`PaymentTransactionService` 统一引用 | ✅ 通过 |
+| K-D1 CLAUDE.md 过时 | `CLAUDE.md` 已更新阶段与目录结构、取餐码与购物车描述 | ✅ 通过 |
+
+> **注①（K-P2-6 分页）**：菜单列表未加分页，但「菜单」天然有界（单店通常数十项、需整页浏览），且真正的性能痛点（逐行相关子查询）已根治，故不加分页为合理设计选择，非缺陷。
+
+### D. 仍保留的小尾巴（非阻塞，可不改）
+
+1. **P3-2** `currentUserId()` 仍在多个 C 端 Controller 重复——纯重复代码，无功能影响。
+2. **P3-4** 订单号仍是「秒级时间 + 6 位随机 + 3 次重试」——当前量级足够，秒杀级突发才需雪花化。
+3. **K-P2-5 jjwt 0.9.1 弃用 API 仍在**——安全关键面（密钥校验 + 无默认值）已修，API 升级属技术债，可后续随依赖升级一并处理。
+
+### E. 修复引入的唯一观察项（可选优化，非 bug）
+
+`CAuthTokenFilter` 对**每个受保护 C 端请求**执行 `cUserMapper.selectById`（为校验禁用态）。这是「禁用用户立即失效」的必要代价，PK 查询很快；但高流量下会对 `c_user` 主键查询增加压力。**建议**（非必须）：对 `userId→status` 做短 TTL（如 30–60s）Redis 缓存，禁用操作时主动清缓存。
+
+### F. 复核结论
+
+- **第九节 F 表的「立即修 / 本迭代修 / 择机优化」共 18 项全部落实**，逐条对照源码确认实现正确、无回归。
+- 修复不仅覆盖全部安全与性能问题，还顺手清理了死代码（旧拦截器、version 重试）并补齐配置化，**完成度与质量都明显高于一般修复轮次**。
+- 无阻塞问题，可进入下一阶段开发。遗留仅为 P3-2 / P3-4 / jjwt 升级三条技术债与一条可选缓存优化，均不影响功能与安全。
+
+---
+
+*审查结束。本轮（第十节）所有已识别问题均已正确修复，未发现回归。如需针对「保留小尾巴」或 E 节缓存优化给出补丁，可继续指派。*

@@ -16,6 +16,7 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.alibaba.fastjson2.JSON;
+import com.ruoyi.common.config.GogorderOrderProperties;
 import com.ruoyi.common.enums.OrderStatusEnum;
 import com.ruoyi.common.enums.OrderTypeEnum;
 import com.ruoyi.common.enums.PayStatusEnum;
@@ -59,6 +60,7 @@ public class OrderServiceImpl implements IOrderService
     @Autowired private ISpecValidationService specValidationService;
     @Autowired private IProductCenterService productCenterService;
     @Autowired private IOrderCancelService orderCancelService;
+    @Autowired private GogorderOrderProperties orderProperties;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -68,6 +70,20 @@ public class OrderServiceImpl implements IOrderService
         if (existing != null)
         {
             return buildSubmitResponse(existing);
+        }
+        CUser user = cUserMapper.selectByIdForUpdate(userId);
+        if (user == null || !Integer.valueOf(1).equals(user.getStatus()))
+        {
+            throw new ServiceException("账号不可用");
+        }
+        existing = bizOrderMapper.selectBySubmitKey(userId, request.getSubmitToken());
+        if (existing != null)
+        {
+            return buildSubmitResponse(existing);
+        }
+        if (bizOrderMapper.countPendingOrdersByUserId(userId) >= orderProperties.getMaxPendingOrdersPerUser())
+        {
+            throw new ServiceException("待支付订单过多，请先支付或取消已有订单");
         }
         return doSubmitOrder(userId, request);
     }

@@ -33,6 +33,7 @@ import com.ruoyi.system.service.ICTokenService;
 public class CAuthServiceImpl implements ICAuthService
 {
     private static final String WECHAT_PLATFORM_MP = "MP";
+    private static final int SMS_MAX_VERIFY_FAILURES = 5;
     private static final SecureRandom RANDOM = new SecureRandom();
 
     @Autowired
@@ -47,7 +48,7 @@ public class CAuthServiceImpl implements ICAuthService
     @Autowired
     private RedisCache redisCache;
 
-    @Value("${c-auth.sms.mock-enabled:true}")
+    @Value("${c-auth.sms.mock-enabled:false}")
     private boolean smsMockEnabled;
 
     @Value("${c-auth.wechat.app-id:}")
@@ -71,6 +72,7 @@ public class CAuthServiceImpl implements ICAuthService
 
         String code = String.format("%06d", RANDOM.nextInt(1_000_000));
         redisCache.setCacheObject("c:auth:sms:code:" + phone, code, 5, TimeUnit.MINUTES);
+        redisCache.deleteObject(smsVerifyFailureKey(phone));
 
         Map<String, Object> result = new HashMap<>();
         result.put("expiresIn", 300);
@@ -88,12 +90,29 @@ public class CAuthServiceImpl implements ICAuthService
     public Map<String, Object> loginBySms(String phone, String code)
     {
         String key = "c:auth:sms:code:" + phone;
+        String failureKey = smsVerifyFailureKey(phone);
+        Number failures = redisCache.getCacheObject(failureKey);
+        if (failures != null && failures.longValue() >= SMS_MAX_VERIFY_FAILURES)
+        {
+            throw new ServiceException("验证码错误次数过多，请重新获取");
+        }
         String cachedCode = redisCache.getCacheObject(key);
         if (!StringUtils.equals(code, cachedCode))
         {
+            long failureCount = redisCache.increment(failureKey, 1);
+            if (failureCount == 1)
+            {
+                redisCache.expire(failureKey, 5, TimeUnit.MINUTES);
+            }
+            if (failureCount >= SMS_MAX_VERIFY_FAILURES)
+            {
+                redisCache.deleteObject(key);
+                throw new ServiceException("验证码错误次数过多，请重新获取");
+            }
             throw new ServiceException("验证码错误或已过期");
         }
         redisCache.deleteObject(key);
+        redisCache.deleteObject(failureKey);
         return buildLoginResult(findOrCreateUser(phone));
     }
 
@@ -231,6 +250,11 @@ public class CAuthServiceImpl implements ICAuthService
         {
             throw new ServiceException(message);
         }
+    }
+
+    private String smsVerifyFailureKey(String phone)
+    {
+        return "c:auth:sms:verify-fail:" + phone;
     }
 
     private JSONObject requestWechatSession(String code)

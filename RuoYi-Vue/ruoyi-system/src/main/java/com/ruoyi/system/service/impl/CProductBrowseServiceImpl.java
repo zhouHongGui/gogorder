@@ -14,8 +14,9 @@ import com.ruoyi.common.utils.StringUtils;
 import com.ruoyi.system.domain.Category;
 import com.ruoyi.system.domain.SpecOption;
 import com.ruoyi.system.domain.SpecTemplate;
-import com.ruoyi.system.domain.dto.CProductView;
 import com.ruoyi.system.domain.dto.CProductCategoryView;
+import com.ruoyi.system.domain.dto.CProductSalesView;
+import com.ruoyi.system.domain.dto.CProductView;
 import com.ruoyi.system.domain.dto.CSpecView;
 import com.ruoyi.system.mapper.ProductCenterMapper;
 import com.ruoyi.system.mapper.ShopMapper;
@@ -45,6 +46,7 @@ public class CProductBrowseServiceImpl implements ICProductBrowseService
     {
         requireShop(shopId);
         List<CProductView> products = productCenterMapper.selectCShopProducts(shopId, categoryId, StringUtils.trim(keyword));
+        hydrateMonthlySales(shopId, products);
         Map<Long, List<Category>> categoriesByProductId = products.isEmpty() ? Collections.emptyMap()
                 : productCenterMapper.selectCategoriesByProductIds(
                         products.stream().map(CProductView::getProductId).distinct().toList()).stream()
@@ -67,11 +69,25 @@ public class CProductBrowseServiceImpl implements ICProductBrowseService
         {
             throw new ServiceException("商品不存在、未上架或不属于当前门店");
         }
+        hydrateMonthlySales(shopId, List.of(product));
         hydrateProductBasics(product, productCenterMapper.selectCategoriesByProductId(product.getProductId()));
         product.setSpecs(buildSpecs(parseLongList(product.getSpecTemplateIdsJson())));
         product.setHasSpecs(!product.getSpecs().isEmpty());
         product.setDisplayPrice(product.getPrice() + minimumRequiredPrice(product.getSpecs()));
         return product;
+    }
+
+    private void hydrateMonthlySales(Long shopId, List<CProductView> products)
+    {
+        if (products.isEmpty())
+        {
+            return;
+        }
+        Map<Long, Long> salesByProductId = productCenterMapper.selectCProductMonthlySales(shopId,
+                products.stream().map(CProductView::getProductId).distinct().toList()).stream()
+                .collect(Collectors.toMap(CProductSalesView::getProductId, CProductSalesView::getMonthlySales));
+        products.forEach(product -> product.setMonthlySales(
+                salesByProductId.getOrDefault(product.getProductId(), 0L)));
     }
 
     private CProductView hydrateProductForList(CProductView product, Map<String, List<CSpecView>> specsCache,

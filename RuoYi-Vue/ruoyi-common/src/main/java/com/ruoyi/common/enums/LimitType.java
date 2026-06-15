@@ -16,5 +16,10 @@ public enum LimitType
     /**
      * 根据请求者IP进行限流
      */
-    IP
+    IP,
+
+    /**
+     * 根据已认证的 C 端用户进行限流
+     */
+    USER
 }

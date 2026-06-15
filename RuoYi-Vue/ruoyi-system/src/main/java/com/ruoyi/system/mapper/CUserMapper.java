@@ -8,6 +8,8 @@ public interface CUserMapper
 {
     CUser selectById(Long id);
 
+    CUser selectByIdForUpdate(Long id);
+
     CUser selectByPhone(String phone);
 
     int insertUserIfAbsent(String phone);

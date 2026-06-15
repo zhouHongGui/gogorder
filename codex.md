@@ -125,7 +125,7 @@ Start-Process -FilePath 'D:\Redis\redis-server.exe' -WorkingDirectory 'D:\Redis'
 ```powershell
 $env:DB_USERNAME='root'
 $env:DB_PASSWORD='<local-password>'
-$env:TOKEN_SECRET='<long-random-secret>'
+$env:TOKEN_SECRET='<at-least-64-byte-random-secret>'
 cd E:\GG\gogorder\gogorder-server
 mvn -pl ruoyi-admin -am spring-boot:run
 ```
@@ -271,7 +271,7 @@ npm run build:prod
 ### 取餐码
 
 - `pickup_token`：12位安全随机字母数字，扫码核销用。
-- `pickup_display`：门店取餐日内5位展示号。
+- `pickup_display`：门店取餐日内字母+3位数字展示号，按 `A001...A999、B001...Z999` 递增。
 - 唯一约束：`UNIQUE(shop_id, pickup_date, pickup_display)`。
 - 即时单取餐日为支付日期，预订单取餐日为预约日期。
 

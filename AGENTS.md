@@ -4,7 +4,7 @@
 
 面向奶茶/饮品连锁品牌的**多门店在线点单系统**。C端 uni-app（微信小程序 + H5），B端和管理后台基于若依基础框架二次开发（Vue 3 + Vite 6）。
 
-**当前阶段**：PRD 文档全部完成，**尚未开始编码**。接下来由你接手开发。
+**当前阶段**：项目已进入编码阶段，M02/M03/M05-M09 已有实现，当前持续完善 C 端交易链路并进行安全与性能审查修复。
 
 ## 技术栈
 
@@ -23,8 +23,8 @@
 gogorder/
 ├── AGENTS.md                          ← 当前文件
 ├── PRD-V1.0.md                        ← V1.0 主 PRD（入口概览）
-├── gogorder-server/                   ← 后端 Spring Boot 项目
-├── gogorder-admin/                    ← 前端 Vue 3 项目（管理后台+B端）
+├── RuoYi-Vue/                         ← 后端 Spring Boot + 若依管理端
+├── gogorder-c/                        ← C端 uni-app 项目
 └── docs/                              ← 详细模块 PRD（见下方）
     ├── README.md                      ← 文档索引 + 依赖总图 + 开发阶段
     ├── M00-系统架构与技术方案.md
@@ -76,7 +76,7 @@ gogorder/
 - 幂等键格式：`{orderId}:{shopProductId}:{DEDUCT|RESTORE}`
 
 ### 取餐码
-- 双字段分离：`pickup_token`（12位随机码，全局唯一，扫码核销）+ `pickup_display`（5位流水号，门店每日递增，叫号展示）。
+- 双字段分离：`pickup_token`（12位随机码，全局唯一，扫码核销）+ `pickup_display`（字母+3位数字，门店每日独立递增，叫号展示）。
 - 增加 `pickup_date` 字段区分即时单取餐日和预订单预约日，防跨天碰撞。
 
 ### 规格

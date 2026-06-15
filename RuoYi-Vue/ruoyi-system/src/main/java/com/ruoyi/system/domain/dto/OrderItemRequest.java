@@ -4,12 +4,14 @@ import java.util.Map;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 
 public class OrderItemRequest
 {
     @NotNull(message = "商品ID不能为空")
     private Long productId;
 
+    @Size(max = 16, message = "商品规格不能超过16组")
     private Map<String, Object> specs;
 
     @NotNull(message = "商品数量不能为空")

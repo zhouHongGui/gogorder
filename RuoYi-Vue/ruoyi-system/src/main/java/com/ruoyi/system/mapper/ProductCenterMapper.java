@@ -10,6 +10,7 @@ import com.ruoyi.system.domain.SpecTemplate;
 import com.ruoyi.system.domain.StockLedger;
 import com.ruoyi.system.domain.dto.CProductView;
 import com.ruoyi.system.domain.dto.CProductCategoryView;
+import com.ruoyi.system.domain.dto.CProductSalesView;
 
 /**
  * 商品中心数据层
@@ -74,6 +75,8 @@ public interface ProductCenterMapper
     List<Category> selectCShopCategories(Long shopId);
     List<CProductView> selectCShopProducts(@Param("shopId") Long shopId, @Param("categoryId") Long categoryId,
             @Param("keyword") String keyword);
+    List<CProductSalesView> selectCProductMonthlySales(@Param("shopId") Long shopId,
+            @Param("productIds") List<Long> productIds);
     CProductView selectCShopProductDetail(@Param("shopId") Long shopId, @Param("productId") Long productId);
 
     StockLedger selectStockLedgerByKey(String idempotentKey);

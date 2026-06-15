@@ -14,6 +14,7 @@ public interface BizOrderMapper
     BizOrder selectBySubmitKey(@Param("userId") Long userId, @Param("submitKey") String submitKey);
     BizOrder selectBySubmitKeyForUpdate(@Param("userId") Long userId, @Param("submitKey") String submitKey);
     BizOrder selectByOrderNo(String orderNo);
+    int countPendingOrdersByUserId(Long userId);
     List<BizOrder> selectUserOrderList(@Param("userId") Long userId,
             @Param("startTime") LocalDateTime startTime, @Param("endTime") LocalDateTime endTime,
             @Param("offset") int offset, @Param("limit") int limit);

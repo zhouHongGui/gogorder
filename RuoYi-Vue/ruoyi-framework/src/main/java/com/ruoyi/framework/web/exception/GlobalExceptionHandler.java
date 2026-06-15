@@ -58,7 +58,7 @@ public class GlobalExceptionHandler
     @ExceptionHandler(ServiceException.class)
     public AjaxResult handleServiceException(ServiceException e, HttpServletRequest request)
     {
-        log.error(e.getMessage(), e);
+        log.warn("业务异常: uri={}, code={}, msg={}", request.getRequestURI(), e.getCode(), e.getMessage());
         Integer code = e.getCode();
         if (StringUtils.isNotNull(code))
         {
@@ -102,7 +102,7 @@ public class GlobalExceptionHandler
     {
         String requestURI = request.getRequestURI();
         log.error("请求地址'{}',发生未知异常.", requestURI, e);
-        return AjaxResult.error(e.getMessage());
+        return AjaxResult.error(HttpStatus.ERROR, "系统繁忙，请稍后重试");
     }
 
     /**
@@ -113,7 +113,7 @@ public class GlobalExceptionHandler
     {
         String requestURI = request.getRequestURI();
         log.error("请求地址'{}',发生系统异常.", requestURI, e);
-        return AjaxResult.error(e.getMessage());
+        return AjaxResult.error(HttpStatus.ERROR, "系统繁忙，请稍后重试");
     }
 
     /**
@@ -122,7 +122,7 @@ public class GlobalExceptionHandler
     @ExceptionHandler(BindException.class)
     public AjaxResult handleBindException(BindException e)
     {
-        log.error(e.getMessage(), e);
+        log.warn("请求参数校验失败: {}", e.getMessage());
         String message = e.getAllErrors().get(0).getDefaultMessage();
         return AjaxResult.error(message);
     }
@@ -133,7 +133,7 @@ public class GlobalExceptionHandler
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public Object handleMethodArgumentNotValidException(MethodArgumentNotValidException e)
     {
-        log.error(e.getMessage(), e);
+        log.warn("请求参数校验失败: {}", e.getMessage());
         String message = e.getBindingResult().getFieldError().getDefaultMessage();
         return AjaxResult.error(message);
     }

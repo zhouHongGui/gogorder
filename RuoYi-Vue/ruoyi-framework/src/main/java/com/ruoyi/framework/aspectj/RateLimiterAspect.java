@@ -14,8 +14,10 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Component;
 import com.ruoyi.common.annotation.RateLimiter;
+import com.ruoyi.common.constant.CAuthConstants;
 import com.ruoyi.common.enums.LimitType;
 import com.ruoyi.common.exception.ServiceException;
+import com.ruoyi.common.utils.ServletUtils;
 import com.ruoyi.common.utils.StringUtils;
 import com.ruoyi.common.utils.ip.IpUtils;
 
@@ -79,6 +81,15 @@ public class RateLimiterAspect
         if (rateLimiter.limitType() == LimitType.IP)
         {
             stringBuffer.append(IpUtils.getIpAddr()).append("-");
+        }
+        else if (rateLimiter.limitType() == LimitType.USER)
+        {
+            Object userId = ServletUtils.getRequest().getAttribute(CAuthConstants.USER_ID_ATTRIBUTE);
+            if (userId == null)
+            {
+                throw new ServiceException("请先登录");
+            }
+            stringBuffer.append(userId).append("-");
         }
         MethodSignature signature = (MethodSignature) point.getSignature();
         Method method = signature.getMethod();

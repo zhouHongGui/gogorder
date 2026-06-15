@@ -88,7 +88,15 @@ public class SpecValidationServiceImpl implements ISpecValidationService
         {
             return normalized;
         }
+        if (specs.size() > 16)
+        {
+            throw new ServiceException("商品规格不能超过16组");
+        }
         specs.forEach((key, value) -> {
+            if (StringUtils.isEmpty(key) || key.length() > 20)
+            {
+                throw new ServiceException("规格模板ID格式不正确");
+            }
             Long templateId;
             try
             {
@@ -105,6 +113,10 @@ public class SpecValidationServiceImpl implements ISpecValidationService
             }
             else if (value instanceof Collection<?> collection)
             {
+                if (collection.size() > 16)
+                {
+                    throw new ServiceException("单组规格选项不能超过16个");
+                }
                 if (collection.stream().anyMatch(item -> !(item instanceof String)))
                 {
                     throw new ServiceException("规格选项ID必须为字符串");
@@ -114,6 +126,10 @@ public class SpecValidationServiceImpl implements ISpecValidationService
             else
             {
                 throw new ServiceException("规格选项必须为字符串或字符串数组");
+            }
+            if (values.stream().anyMatch(optionId -> optionId.length() > 64))
+            {
+                throw new ServiceException("规格选项ID长度不能超过64个字符");
             }
             List<String> optionIds = values.stream().filter(StringUtils::isNotEmpty).distinct().sorted().toList();
             if (!optionIds.isEmpty())

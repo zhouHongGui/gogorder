@@ -229,7 +229,7 @@ CREATE TABLE IF NOT EXISTS `biz_order` (
   `order_no` VARCHAR(32) NOT NULL COMMENT '订单号',
   `submit_key` VARCHAR(64) NOT NULL COMMENT '客户端提交幂等键',
   `pickup_token` VARCHAR(12) DEFAULT NULL COMMENT '内部核销令牌（支付成功后生成）',
-  `pickup_display` VARCHAR(5) DEFAULT NULL COMMENT '门店取餐日展示号（支付成功后生成）',
+  `pickup_display` VARCHAR(5) DEFAULT NULL COMMENT '门店取餐日展示号（字母+3位数字，支付成功后生成）',
   `pickup_date` DATE DEFAULT NULL COMMENT '取餐日期，支付成功后生成',
   `user_id` BIGINT NOT NULL,
   `shop_id` BIGINT NOT NULL,
@@ -257,9 +257,12 @@ CREATE TABLE IF NOT EXISTS `biz_order` (
   UNIQUE KEY `uk_pickup_token` (`pickup_token`),
   UNIQUE KEY `uk_pickup_display` (`shop_id`, `pickup_date`, `pickup_display`),
   KEY `idx_user_id` (`user_id`),
+  KEY `idx_user_pending` (`user_id`, `order_status`, `pay_status`),
   KEY `idx_shop_order_status` (`shop_id`, `order_status`),
+  KEY `idx_shop_pay_time` (`shop_id`, `pay_status`, `pay_time`, `id`),
   KEY `idx_shop_scheduled_pickup` (`shop_id`, `scheduled_pickup_time`),
-  KEY `idx_create_time` (`create_time`)
+  KEY `idx_create_time` (`create_time`),
+  KEY `idx_timeout_sweep` (`order_status`, `pay_status`, `id`, `create_time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单';
 
 CREATE TABLE IF NOT EXISTS `biz_order_item` (
@@ -275,6 +278,7 @@ CREATE TABLE IF NOT EXISTS `biz_order_item` (
   `subtotal` INT NOT NULL COMMENT '小计（分）',
   PRIMARY KEY (`id`),
   KEY `idx_order_id` (`order_id`),
+  KEY `idx_order_product` (`order_id`, `product_id`),
   KEY `idx_shop_product_id` (`shop_product_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单明细';
 

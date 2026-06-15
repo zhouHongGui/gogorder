@@ -19,6 +19,11 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         from c_user where id = #{id}
     </select>
 
+    <select id="selectByIdForUpdate" parameterType="Long" resultMap="CUserResult">
+        select id, phone, nickname, avatar, status, create_time, update_time
+        from c_user where id = #{id} for update
+    </select>
+
     <select id="selectByPhone" parameterType="String" resultMap="CUserResult">
         select id, phone, nickname, avatar, status, create_time, update_time
         from c_user where phone = #{phone}

@@ -1,5 +1,6 @@
 package com.ruoyi.system.service.impl;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -12,6 +13,7 @@ import com.ruoyi.system.service.ICTokenService;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
+import jakarta.annotation.PostConstruct;
 
 @Service
 public class CTokenServiceImpl implements ICTokenService
@@ -19,8 +21,20 @@ public class CTokenServiceImpl implements ICTokenService
     @Value("${c-auth.jwt.secret}")
     private String secret;
 
+    private byte[] signingKey;
+
     @Value("${c-auth.jwt.expire-days:7}")
     private int expireDays;
+
+    @PostConstruct
+    public void validateSecret()
+    {
+        signingKey = secret == null ? new byte[0] : secret.getBytes(StandardCharsets.UTF_8);
+        if (signingKey.length < 64)
+        {
+            throw new IllegalStateException("C_TOKEN_SECRET or TOKEN_SECRET must contain at least 64 UTF-8 bytes");
+        }
+    }
 
     @Override
     public String createToken(CUser user)
@@ -34,7 +48,7 @@ public class CTokenServiceImpl implements ICTokenService
                 .setSubject("c-user")
                 .setIssuedAt(new Date(now))
                 .setExpiration(new Date(now + expireDays * 24L * 60 * 60 * 1000))
-                .signWith(SignatureAlgorithm.HS512, secret)
+                .signWith(SignatureAlgorithm.HS512, signingKey)
                 .compact();
     }
 
@@ -43,7 +57,7 @@ public class CTokenServiceImpl implements ICTokenService
     {
         try
         {
-            Claims claims = Jwts.parser().setSigningKey(secret).parseClaimsJws(token).getBody();
+            Claims claims = Jwts.parser().setSigningKey(signingKey).parseClaimsJws(token).getBody();
             Long userId = Long.valueOf(String.valueOf(claims.get("userId")));
             String phone = String.valueOf(claims.get("phone"));
             return new CAuthPrincipal(userId, phone);

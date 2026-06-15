@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import com.ruoyi.common.constant.HttpStatus;
+import com.ruoyi.common.config.GogorderOrderProperties;
 import com.ruoyi.common.enums.BalanceChangeTypeEnum;
 import com.ruoyi.common.enums.OrderStatusEnum;
 import com.ruoyi.common.enums.OrderTypeEnum;
@@ -31,11 +32,14 @@ import com.ruoyi.system.mapper.PaymentLedgerMapper;
 public class PaymentTransactionService
 {
     private static final Logger log = LoggerFactory.getLogger(PaymentTransactionService.class);
+    private static final int PICKUP_DISPLAY_GROUP_SIZE = 999;
+    private static final int PICKUP_DISPLAY_MAX_SEQUENCE = 26 * PICKUP_DISPLAY_GROUP_SIZE;
 
     @Autowired private BizOrderMapper bizOrderMapper;
     @Autowired private CUserBalanceMapper cUserBalanceMapper;
     @Autowired private BalanceLedgerMapper balanceLedgerMapper;
     @Autowired private PaymentLedgerMapper paymentLedgerMapper;
+    @Autowired private GogorderOrderProperties orderProperties;
 
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRES_NEW)
     public PayResponse payAttempt(Long userId, Long orderId, String pickupToken)
@@ -61,7 +65,8 @@ public class PaymentTransactionService
         {
             throw new ServiceException("订单状态不允许支付", HttpStatus.CONFLICT);
         }
-        if (locked.getCreateTime() != null && locked.getCreateTime().isBefore(LocalDateTime.now().minusMinutes(15)))
+        if (locked.getCreateTime() != null && locked.getCreateTime().isBefore(
+                LocalDateTime.now().minusMinutes(orderProperties.getPayTimeoutMinutes())))
         {
             throw new ServiceException("订单已超时，请重新下单", HttpStatus.BAD_REQUEST);
         }
@@ -76,14 +81,6 @@ public class PaymentTransactionService
             }
             pickupDate = locked.getScheduledPickupTime().toLocalDate();
         }
-        bizOrderMapper.allocatePickupDisplay(locked.getShopId(), pickupDate);
-        int sequence = bizOrderMapper.selectPickupSeq(locked.getShopId(), pickupDate);
-        if (sequence > 99999)
-        {
-            throw new ServiceException("当日取餐号已满，请联系门店");
-        }
-        String pickupDisplay = String.format("%05d", sequence);
-
         CUserBalance balance = cUserBalanceMapper.selectByUserIdForUpdate(userId);
         if (balance == null)
         {
@@ -95,26 +92,16 @@ public class PaymentTransactionService
                     Map.of("balance", balance.getBalance(), "required", locked.getTotalAmount()));
         }
 
-        int afterBalance = 0;
-        for (int retry = 0; retry < 3; retry++)
+        int rows = cUserBalanceMapper.updateLockedBalance(userId, -locked.getTotalAmount());
+        if (rows == 0)
         {
-            int rows = cUserBalanceMapper.updateBalance(userId, -locked.getTotalAmount(), balance.getVersion());
-            if (rows > 0)
-            {
-                afterBalance = balance.getBalance() - locked.getTotalAmount();
-                break;
-            }
-            if (retry == 2)
-            {
-                throw new ServiceException("系统繁忙，请重试");
-            }
-            balance = cUserBalanceMapper.selectByUserIdForUpdate(userId);
-            if (balance.getBalance() < locked.getTotalAmount())
-            {
-                throw new ServiceException("余额不足", HttpStatus.BAD_REQUEST).setData(
-                        Map.of("balance", balance.getBalance(), "required", locked.getTotalAmount()));
-            }
+            throw new ServiceException("余额扣减失败，请重试");
         }
+        int afterBalance = balance.getBalance() - locked.getTotalAmount();
+
+        bizOrderMapper.allocatePickupDisplay(locked.getShopId(), pickupDate);
+        int sequence = bizOrderMapper.selectPickupSeq(locked.getShopId(), pickupDate);
+        String pickupDisplay = formatPickupDisplay(sequence);
 
         BalanceLedger balanceLedger = new BalanceLedger();
         balanceLedger.setUserId(userId);
@@ -136,7 +123,7 @@ public class PaymentTransactionService
         paymentLedgerMapper.insert(paymentLedger);
 
         LocalDateTime now = LocalDateTime.now();
-        int rows = bizOrderMapper.updateOrderStatus(orderId, OrderStatusEnum.ACCEPTED.getCode(),
+        rows = bizOrderMapper.updateOrderStatus(orderId, OrderStatusEnum.ACCEPTED.getCode(),
                 PayStatusEnum.PAY_SUCCESS.getCode(), RefundStatusEnum.REFUND_NONE.getCode(),
                 now, now, pickupToken, pickupDisplay, pickupDate);
         if (rows == 0)
@@ -144,5 +131,17 @@ public class PaymentTransactionService
             throw new ServiceException("订单状态已变更", HttpStatus.CONFLICT);
         }
         return new PayResponse(locked.getOrderNo(), pickupDisplay, afterBalance);
+    }
+
+    private String formatPickupDisplay(int sequence)
+    {
+        if (sequence <= 0 || sequence > PICKUP_DISPLAY_MAX_SEQUENCE)
+        {
+            throw new ServiceException("当日取餐号已满，请联系门店");
+        }
+        int zeroBased = sequence - 1;
+        char prefix = (char) ('A' + zeroBased / PICKUP_DISPLAY_GROUP_SIZE);
+        int number = zeroBased % PICKUP_DISPLAY_GROUP_SIZE + 1;
+        return String.format("%c%03d", prefix, number);
     }
 }

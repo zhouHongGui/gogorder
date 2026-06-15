@@ -105,21 +105,12 @@ public class OrderCancelServiceImpl implements IOrderCancelService
         {
             throw new ServiceException("余额账户不存在");
         }
-        int afterBalance = 0;
-        for (int retry = 0; retry < 3; retry++)
+        int rows = cUserBalanceMapper.updateLockedBalance(locked.getUserId(), locked.getTotalAmount());
+        if (rows == 0)
         {
-            int rows = cUserBalanceMapper.updateBalance(locked.getUserId(), locked.getTotalAmount(), balance.getVersion());
-            if (rows > 0)
-            {
-                afterBalance = balance.getBalance() + locked.getTotalAmount();
-                break;
-            }
-            if (retry == 2)
-            {
-                throw new ServiceException("退款失败，请重试");
-            }
-            balance = cUserBalanceMapper.selectByUserIdForUpdate(locked.getUserId());
+            throw new ServiceException("退款失败，请重试");
         }
+        int afterBalance = balance.getBalance() + locked.getTotalAmount();
 
         BalanceLedger balanceLedger = new BalanceLedger();
         balanceLedger.setUserId(locked.getUserId());

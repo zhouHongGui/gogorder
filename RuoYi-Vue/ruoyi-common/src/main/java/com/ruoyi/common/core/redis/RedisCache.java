@@ -11,6 +11,8 @@ import org.springframework.data.redis.core.BoundSetOperations;
 import org.springframework.data.redis.core.HashOperations;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Component;
 
 /**
@@ -22,6 +24,10 @@ import org.springframework.stereotype.Component;
 @Component
 public class RedisCache
 {
+    private static final RedisScript<Long> RELEASE_LOCK_SCRIPT = new DefaultRedisScript<>(
+            "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
+            Long.class);
+
     @Autowired
     public RedisTemplate redisTemplate;
 
@@ -135,6 +141,12 @@ public class RedisCache
     public boolean deleteObject(final String key)
     {
         return redisTemplate.delete(key);
+    }
+
+    public boolean releaseLock(final String key, final String value)
+    {
+        Long result = (Long) redisTemplate.execute(RELEASE_LOCK_SCRIPT, List.of(key), value);
+        return Long.valueOf(1L).equals(result);
     }
 
     /**

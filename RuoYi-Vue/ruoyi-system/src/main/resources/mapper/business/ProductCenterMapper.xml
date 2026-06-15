@@ -406,15 +406,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     <sql id="selectCProductVo">
         select sp.id shop_product_id, p.id product_id, p.name, p.image, p.description,
                coalesce(sp.price, p.base_price) effective_price, sp.stock, p.tags, p.spec_template_ids,
-               (
-                   select coalesce(sum(oi.quantity), 0)
-                   from biz_order_item oi
-                   inner join biz_order bo on bo.id = oi.order_id
-                   where oi.product_id = p.id
-                     and bo.shop_id = sp.shop_id
-                     and bo.pay_status = 1
-                     and bo.pay_time &gt;= date_sub(sysdate(), interval 30 day)
-               ) monthly_sales
+               0 monthly_sales
         from shop_product sp
         inner join product p on p.id = sp.product_id and p.status = 1
         inner join shop s on s.id = sp.shop_id and s.del_flag = 0
@@ -450,6 +442,20 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <include refid="selectCProductVo"/>
         where sp.shop_id = #{shopId} and p.id = #{productId} and sp.status = 1
         limit 1
+    </select>
+
+    <select id="selectCProductMonthlySales" resultType="CProductSalesView">
+        select oi.product_id productId, sum(oi.quantity) monthlySales
+        from biz_order bo
+        inner join biz_order_item oi on oi.order_id = bo.id
+        where bo.shop_id = #{shopId}
+          and bo.pay_status = 1
+          and bo.pay_time &gt;= date_sub(sysdate(), interval 30 day)
+          and oi.product_id in
+          <foreach collection="productIds" item="productId" open="(" separator="," close=")">
+              #{productId}
+          </foreach>
+        group by oi.product_id
     </select>
 
     <resultMap id="StockLedgerResult" type="StockLedger">

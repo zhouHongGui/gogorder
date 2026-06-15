@@ -1,7 +1,9 @@
 package com.ruoyi.framework.config;
 
+import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.CacheControl;
@@ -14,7 +16,6 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import com.ruoyi.common.config.GogorderConfig;
 import com.ruoyi.common.constant.Constants;
 import com.ruoyi.framework.interceptor.RepeatSubmitInterceptor;
-import com.ruoyi.framework.interceptor.CAuthInterceptor;
 
 /**
  * 通用配置
@@ -27,8 +28,8 @@ public class ResourcesConfig implements WebMvcConfigurer
     @Autowired
     private RepeatSubmitInterceptor repeatSubmitInterceptor;
 
-    @Autowired
-    private CAuthInterceptor cAuthInterceptor;
+    @Value("${cors.allowed-origins:http://localhost:5173,http://localhost:80}")
+    private String corsAllowedOrigins;
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry)
@@ -49,13 +50,6 @@ public class ResourcesConfig implements WebMvcConfigurer
     @Override
     public void addInterceptors(InterceptorRegistry registry)
     {
-        registry.addInterceptor(cAuthInterceptor)
-                .addPathPatterns("/api/c/**")
-                .excludePathPatterns(
-                        "/api/c/auth/**",
-                        "/api/c/shop/**",
-                        "/api/c/category/**",
-                        "/api/c/product/**");
         registry.addInterceptor(repeatSubmitInterceptor).addPathPatterns("/**");
     }
 
@@ -67,7 +61,8 @@ public class ResourcesConfig implements WebMvcConfigurer
     {
         CorsConfiguration config = new CorsConfiguration();
         // 设置访问源地址
-        config.addAllowedOriginPattern("*");
+        config.setAllowedOriginPatterns(Arrays.stream(corsAllowedOrigins.split(","))
+                .map(String::trim).filter(origin -> !origin.isEmpty()).toList());
         // 设置访问源请求头
         config.addAllowedHeader("*");
         // 设置访问源请求方法

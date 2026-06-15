@@ -20,4 +20,8 @@
         update c_user_balance set balance = balance + #{delta}, version = version + 1, update_time = sysdate()
         where user_id = #{userId} and version = #{version}
     </update>
+    <update id="updateLockedBalance">
+        update c_user_balance set balance = balance + #{delta}, version = version + 1, update_time = sysdate()
+        where user_id = #{userId}
+    </update>
 </mapper>

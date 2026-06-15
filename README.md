@@ -30,8 +30,8 @@ $env:REDIS_HOST='localhost'
 $env:REDIS_PORT='6379'
 $env:REDIS_DATABASE='0'
 $env:REDIS_PASSWORD=''
-$env:TOKEN_SECRET='replace-with-a-long-random-secret'
-$env:C_TOKEN_SECRET='replace-with-another-long-random-secret'
+$env:TOKEN_SECRET='replace-with-at-least-64-random-characters-before-starting-server'
+$env:C_TOKEN_SECRET='replace-with-an-independent-64-byte-random-secret'
 $env:C_SMS_MOCK_ENABLED='true'
 $env:WECHAT_MINI_APP_ID=''
 $env:WECHAT_MINI_APP_SECRET=''
@@ -41,7 +41,7 @@ $env:AMAP_WEB_KEY='your-amap-web-js-api-key'
 $env:AMAP_SECURITY_CODE='your-amap-js-api-security-code'
 ```
 
-MySQL 环境变量均为必填。Redis 无密码时可不设置 `REDIS_PASSWORD`，`LOG_PATH` 未设置时默认使用后端工作目录下的 `logs`，`UPLOAD_PATH` 未设置时默认使用 `D:/gogorder/uploadPath`。`C_TOKEN_SECRET` 是 C 端 7 天 JWT 的签名密钥，未设置时回退到 `TOKEN_SECRET`；开发时可保持 `C_SMS_MOCK_ENABLED=true`，发送验证码接口会返回 `mockCode`。微信小程序登录需要配置 `WECHAT_MINI_APP_ID` 和 `WECHAT_MINI_APP_SECRET`。高德地图选点配置由后端从 `AMAP_WEB_KEY` 和 `AMAP_SECURITY_CODE` 读取，再通过登录后的门店管理接口返回；未配置时仍可手动填写门店地址和经纬度。
+MySQL 环境变量均为必填。`TOKEN_SECRET` 必须配置且至少包含 64 个 UTF-8 字节，`C_TOKEN_SECRET` 未设置时回退到 `TOKEN_SECRET`。Redis 无密码时可不设置 `REDIS_PASSWORD`，`LOG_PATH` 未设置时默认使用后端工作目录下的 `logs`，`UPLOAD_PATH` 未设置时默认使用 `D:/gogorder/uploadPath`。开发时可显式设置 `C_SMS_MOCK_ENABLED=true`，生产环境必须保持关闭。微信小程序登录需要配置 `WECHAT_MINI_APP_ID` 和 `WECHAT_MINI_APP_SECRET`。高德地图选点配置由后端从 `AMAP_WEB_KEY` 和 `AMAP_SECURITY_CODE` 读取，再通过登录后的门店管理接口返回；未配置时仍可手动填写门店地址和经纬度。
 
 环境变量配置完成后，按需手动启动各服务：
 
