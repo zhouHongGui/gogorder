@@ -2,6 +2,8 @@ package com.ruoyi.framework.security.filter;
 
 import java.io.IOException;
 import java.util.Collections;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -44,6 +46,8 @@ import jakarta.servlet.http.HttpServletResponse;
 @Component
 public class CAuthTokenFilter extends OncePerRequestFilter
 {
+    private static final Logger log = LoggerFactory.getLogger(CAuthTokenFilter.class);
+
     @Autowired private ICTokenService tokenService;
     @Autowired private CUserMapper cUserMapper;
 
@@ -111,6 +115,8 @@ public class CAuthTokenFilter extends OncePerRequestFilter
         catch (ServiceException e)
         {
             // 校验异常 → 写错误响应（401/403），带上异常 code。
+            // filter 抛出的异常不经过全局异常处理器，这里统一记录（含 parseToken 的非法/过期 JWT）；不记 token。
+            log.warn("C端鉴权失败 uri={} code={} msg={}", request.getRequestURI(), e.getCode(), e.getMessage());
             writeError(response, e.getCode() == null ? HttpStatus.UNAUTHORIZED : e.getCode(), e.getMessage());
         }
     }

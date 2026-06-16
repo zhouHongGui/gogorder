@@ -742,6 +742,8 @@ public class ProductCenterServiceImpl implements IProductCenterService
             rows = productCenterMapper.deductShopProductStock(shopProductId, quantity);
             if (rows == 0)
             {
+                log.warn("库存扣减失败(并发不足) orderId={} shopProductId={} beforeStock={} requestQty={}",
+                        orderId, shopProductId, beforeStock, quantity);
                 throw new ServiceException("商品库存不足");
             }
             afterStock = beforeStock - quantity;

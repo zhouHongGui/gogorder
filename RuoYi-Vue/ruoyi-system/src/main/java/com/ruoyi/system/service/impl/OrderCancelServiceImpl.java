@@ -150,7 +150,7 @@ public class OrderCancelServiceImpl implements IOrderCancelService
         // 【退款幂等】已退款成功则直接返回，防止重复退款。
         if (Integer.valueOf(RefundStatusEnum.REFUND_SUCCESS.getCode()).equals(locked.getRefundStatus()))
         {
-            log.info("退款幂等返回，orderId={} 已退款", orderId);
+            log.debug("退款幂等返回，orderId={} 已退款", orderId);
             return;
         }
         // 【退款前置校验】仅允许「已接单(1) + 已支付(1) + 未退款(0)」。制作中(2)及之后不可退。
@@ -207,6 +207,9 @@ public class OrderCancelServiceImpl implements IOrderCancelService
         }
         // 归还库存。
         restoreOrderStock(orderId);
+        log.info("退款成功 orderId={} orderNo={} userId={} shopId={} amount={} orderType={} pickupDisplay={} operatorId={}",
+                orderId, locked.getOrderNo(), locked.getUserId(), locked.getShopId(),
+                locked.getTotalAmount(), locked.getOrderType(), locked.getPickupDisplay(), operatorId);
     }
 
     /**

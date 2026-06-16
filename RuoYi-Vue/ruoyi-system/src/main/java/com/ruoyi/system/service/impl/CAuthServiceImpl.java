@@ -8,6 +8,8 @@ import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
@@ -55,6 +57,8 @@ import com.ruoyi.system.service.ICTokenService;
 @Service
 public class CAuthServiceImpl implements ICAuthService
 {
+    private static final Logger log = LoggerFactory.getLogger(CAuthServiceImpl.class);
+
     /** 微信平台标识：MP=小程序。 */
     private static final String WECHAT_PLATFORM_MP = "MP";
     /** 短信验证码最大验证失败次数，超过即作废验证码并锁定。 */
@@ -164,12 +168,15 @@ public class CAuthServiceImpl implements ICAuthService
                 redisCache.deleteObject(key);   // 作废验证码，阻止继续枚举
                 throw new ServiceException("验证码错误次数过多，请重新获取");
             }
+            log.warn("短信登录失败(验证码错误) phone={} failureCount={}", maskPhone(phone), failureCount);
             throw new ServiceException("验证码错误或已过期");
         }
         // 验证通过：清理验证码与失败计数，签发登录态。
         redisCache.deleteObject(key);
         redisCache.deleteObject(failureKey);
-        return buildLoginResult(findOrCreateUser(phone));
+        CUser loginUser = findOrCreateUser(phone);
+        log.info("短信登录成功 userId={} phone={}", loginUser.getId(), maskPhone(phone));
+        return buildLoginResult(loginUser);
     }
 
     /**
@@ -199,7 +206,9 @@ public class CAuthServiceImpl implements ICAuthService
         CUserWechat wechat = cUserMapper.selectWechatByOpenid(WECHAT_PLATFORM_MP, openid);
         if (wechat != null)
         {
-            Map<String, Object> result = buildLoginResult(requireActiveUser(wechat.getUserId()));
+            CUser wechatUser = requireActiveUser(wechat.getUserId());
+            log.info("微信登录成功(已绑定) userId={} phone={}", wechatUser.getId(), maskPhone(wechatUser.getPhone()));
+            Map<String, Object> result = buildLoginResult(wechatUser);
             result.put("bound", true);
             return result;
         }
@@ -250,9 +259,11 @@ public class CAuthServiceImpl implements ICAuthService
         CUserWechat bound = cUserMapper.selectWechatByOpenid(WECHAT_PLATFORM_MP, ticket.getOpenid());
         if (bound == null || !user.getId().equals(bound.getUserId()))
         {
+            log.warn("微信绑定冲突(身份已绑其他账号) userId={}", user.getId());
             throw new ServiceException("微信身份已绑定其他账号");
         }
         redisCache.deleteObject(ticketKey);
+        log.info("微信绑定手机号成功 userId={} phone={}", user.getId(), maskPhone(user.getPhone()));
         return buildLoginResult(user);
     }
 
@@ -296,15 +307,20 @@ public class CAuthServiceImpl implements ICAuthService
     protected CUser findOrCreateUser(String phone)
     {
         // 幂等插入用户（已存在则跳过），适合并发首次登录。
-        cUserMapper.insertUserIfAbsent(phone);
+        int inserted = cUserMapper.insertUserIfAbsent(phone);
         CUser user = cUserMapper.selectByPhone(phone);
         if (user == null)
         {
             throw new ServiceException("创建用户失败");
         }
+        if (inserted > 0)
+        {
+            log.info("新用户注册 userId={} phone={}", user.getId(), maskPhone(phone));
+        }
         // 禁用账号禁止登录。
         if (!Integer.valueOf(1).equals(user.getStatus()))
         {
+            log.warn("登录被拒(账号禁用) userId={} phone={}", user.getId(), maskPhone(phone));
             throw new ServiceException("账号已被禁用", 403);
         }
         // 确保余额账户存在（幂等），V1.0 初始余额 0。
@@ -462,6 +478,19 @@ public class CAuthServiceImpl implements ICAuthService
     private String encode(String value)
     {
         return URLEncoder.encode(value, StandardCharsets.UTF_8);
+    }
+
+    /**
+     * 手机号脱敏：保留前 3 位和后 4 位，中间用 **** 替换（如 138****1234）。
+     * 长度不足或为空时返回 ***，避免日志泄露完整手机号。
+     */
+    private String maskPhone(String phone)
+    {
+        if (phone == null || phone.length() < 7)
+        {
+            return "***";
+        }
+        return phone.substring(0, 3) + "****" + phone.substring(phone.length() - 4);
     }
 
     /**

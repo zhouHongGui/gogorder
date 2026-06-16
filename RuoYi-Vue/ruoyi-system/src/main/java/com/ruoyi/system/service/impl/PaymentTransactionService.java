@@ -140,6 +140,8 @@ public class PaymentTransactionService
         // 【余额校验】不足则抛异常，并附带 {balance, required} 数据，前端展示「余额 X，需支付 Y」。
         if (balance.getBalance() < locked.getTotalAmount())
         {
+            log.warn("余额不足 orderId={} userId={} balance={} required={}",
+                    orderId, userId, balance.getBalance(), locked.getTotalAmount());
             throw new ServiceException("余额不足", HttpStatus.BAD_REQUEST).setData(
                     Map.of("balance", balance.getBalance(), "required", locked.getTotalAmount()));
         }
@@ -190,6 +192,9 @@ public class PaymentTransactionService
         {
             throw new ServiceException("订单状态已变更", HttpStatus.CONFLICT);
         }
+        log.info("支付成功 orderId={} orderNo={} userId={} shopId={} amount={} orderType={} pickupDisplay={}",
+                orderId, locked.getOrderNo(), userId, locked.getShopId(),
+                locked.getTotalAmount(), locked.getOrderType(), pickupDisplay);
         return new PayResponse(locked.getOrderNo(), pickupDisplay, afterBalance);
     }
 

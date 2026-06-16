@@ -11,6 +11,8 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
@@ -82,6 +84,8 @@ import com.ruoyi.system.service.ISpecValidationService;
 @Service
 public class OrderServiceImpl implements IOrderService
 {
+    private static final Logger log = LoggerFactory.getLogger(OrderServiceImpl.class);
+
     /** 订单号时间前缀格式：精确到秒。 */
     private static final DateTimeFormatter ORDER_NO_TIME = DateTimeFormatter.ofPattern("yyyyMMddHHmmss");
 
@@ -115,6 +119,8 @@ public class OrderServiceImpl implements IOrderService
         BizOrder existing = bizOrderMapper.selectBySubmitKey(userId, request.getSubmitToken());
         if (existing != null)
         {
+            log.debug("下单幂等命中(快速通道) userId={} orderId={} orderNo={} shopId={}",
+                    userId, existing.getId(), existing.getOrderNo(), existing.getShopId());
             return buildSubmitResponse(existing);
         }
         // 【用户可用性校验 + 加锁】锁住用户行，既校验账号是否被禁用，也为后面的「待支付订单数」
@@ -129,6 +135,8 @@ public class OrderServiceImpl implements IOrderService
         existing = bizOrderMapper.selectBySubmitKey(userId, request.getSubmitToken());
         if (existing != null)
         {
+            log.debug("下单幂等命中(加锁后) userId={} orderId={} orderNo={} shopId={}",
+                    userId, existing.getId(), existing.getOrderNo(), existing.getShopId());
             return buildSubmitResponse(existing);
         }
         // 【防占库存】限制单用户「待支付」订单数。下单即扣库存，未支付订单要等 15 分钟超时才归还，
@@ -254,6 +262,9 @@ public class OrderServiceImpl implements IOrderService
         {
             productCenterService.deductStock(order.getId(), shopProductId, stockDeductions.get(shopProductId));
         }
+        log.info("下单成功 orderId={} orderNo={} userId={} shopId={} amount={} orderType={}",
+                order.getId(), order.getOrderNo(), userId, order.getShopId(),
+                order.getTotalAmount(), order.getOrderType());
         return buildSubmitResponse(order);
     }
 
@@ -285,6 +296,8 @@ public class OrderServiceImpl implements IOrderService
                     BizOrder existing = bizOrderMapper.selectBySubmitKeyForUpdate(order.getUserId(), order.getSubmitKey());
                     if (existing != null)
                     {
+                        log.debug("下单幂等命中(submit_key冲突) userId={} orderId={} orderNo={} shopId={}",
+                                order.getUserId(), existing.getId(), existing.getOrderNo(), existing.getShopId());
                         return existing;
                     }
                     // 极端情况：约束报错却查不到订单，继续往下走重试逻辑。
@@ -295,6 +308,8 @@ public class OrderServiceImpl implements IOrderService
                     throw e;
                 }
                 // 否则是 uk_order_no 碰撞且仍有重试机会，循环换号重试。
+                log.warn("订单号碰撞重试 userId={} collidedOrderNo={} retry={}",
+                        order.getUserId(), order.getOrderNo(), retry + 1);
             }
         }
         throw new ServiceException("订单创建失败，请重试");

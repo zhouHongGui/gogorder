@@ -9,6 +9,8 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -53,6 +55,8 @@ import com.ruoyi.system.service.ISpecValidationService;
 @Service
 public class CCartServiceImpl implements ICCartService
 {
+    private static final Logger log = LoggerFactory.getLogger(CCartServiceImpl.class);
+
     /** 购物车存活时间：7 天（秒）。 */
     private static final int CART_TTL_SECONDS = 7 * 24 * 60 * 60;
     /** 商品条目在 Hash 中的字段前缀，用于与 shopId/shopName/version 等固定字段区分。 */
@@ -220,7 +224,7 @@ public class CCartServiceImpl implements ICCartService
                 JSON.toJSONString(item),
                 String.valueOf(StringUtils.nvl(item.getStock(), -1)),
                 String.valueOf(CART_TTL_SECONDS));
-        handleScriptResult(result);
+        handleScriptResult(userId, request.getShopId(), result);
         return getCart(userId, request.getShopId());
     }
 
@@ -246,7 +250,7 @@ public class CCartServiceImpl implements ICCartService
                 String.valueOf(request.getQuantity()),
                 String.valueOf(currentStock),
                 String.valueOf(CART_TTL_SECONDS));
-        handleScriptResult(result);
+        handleScriptResult(userId, request.getShopId(), result);
         return getCart(userId, request.getShopId());
     }
 
@@ -264,7 +268,7 @@ public class CCartServiceImpl implements ICCartService
                 Collections.singletonList(cartKey(userId, shopId)),
                 itemField(cartItemId),
                 String.valueOf(CART_TTL_SECONDS));
-        handleScriptResult(result);
+        handleScriptResult(userId, shopId, result);
         return getCart(userId, shopId);
     }
 
@@ -323,12 +327,14 @@ public class CCartServiceImpl implements ICCartService
      * @param result 脚本返回的状态字符串
      * @throws ServiceException 非 SUCCESS 的各种业务异常
      */
-    private void handleScriptResult(String result)
+    private void handleScriptResult(Long userId, Long shopId, String result)
     {
         if ("SUCCESS".equals(result))
         {
             return;
         }
+        // 非 SUCCESS 一律记 warn（含 shopId 便于定位是哪个门店的车），再翻译成业务异常。
+        log.warn("购物车操作失败 userId={} shopId={} result={}", userId, shopId, result);
         if ("STOCK_NOT_ENOUGH".equals(result))
         {
             throw new ServiceException("商品库存不足");
