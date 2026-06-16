@@ -4,39 +4,43 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
+/**
+ * 订单详情展示对象（{@code /api/c/order/{orderId}} 返回）。
+ * 含完整时间线与金额，金额单位均为分。各状态码带 Desc 中文描述。
+ */
 public class OrderDetailView
 {
-    private Long orderId;
-    private String orderNo;
-    private Long shopId;
-    private String shopName;
-    private String shopPhone;
-    private String reservedPhone;
-    private String orderType;
-    private String orderTypeDesc;
-    private LocalDateTime scheduledPickupTime;
-    private Integer orderStatus;
-    private String orderStatusDesc;
-    private Integer payStatus;
-    private String payStatusDesc;
-    private Integer refundStatus;
-    private String refundStatusDesc;
-    private Integer productAmount;
-    private Integer packFee;
-    private Integer totalAmount;
-    private String remark;
-    private String pickupDisplay;
-    private String pickupToken;
-    private LocalDate pickupDate;
-    private LocalDateTime payTime;
-    private LocalDateTime acceptTime;
-    private LocalDateTime makeStartTime;
-    private LocalDateTime completeMakeTime;
-    private LocalDateTime verifyTime;
-    private LocalDateTime cancelTime;
-    private String cancelReason;
-    private LocalDateTime createTime;
-    private List<OrderItemView> items;
+    private Long orderId;                  // 订单 ID
+    private String orderNo;                // 订单号
+    private Long shopId;                   // 门店 ID
+    private String shopName;               // 门店名（门店删除时兜底空串）
+    private String shopPhone;              // 门店电话
+    private String reservedPhone;          // 下单用户手机号
+    private String orderType;              // 订单类型 NORMAL/PREORDER
+    private String orderTypeDesc;          // 订单类型中文
+    private LocalDateTime scheduledPickupTime;  // 预约取餐时间（仅预订单）
+    private Integer orderStatus;           // 订单状态码
+    private String orderStatusDesc;        // 订单状态中文
+    private Integer payStatus;             // 支付状态码
+    private String payStatusDesc;          // 支付状态中文
+    private Integer refundStatus;          // 退款状态码
+    private String refundStatusDesc;       // 退款状态中文
+    private Integer productAmount;         // 商品总金额（分）
+    private Integer packFee;               // 包装费（分）
+    private Integer totalAmount;           // 应付合计（分）
+    private String remark;                 // 用户备注
+    private String pickupDisplay;          // 取餐展示号
+    private String pickupToken;            // 取餐核销令牌
+    private LocalDate pickupDate;          // 取餐归属日期
+    private LocalDateTime payTime;         // 支付时间
+    private LocalDateTime acceptTime;      // 接单时间
+    private LocalDateTime makeStartTime;   // 开始制作时间
+    private LocalDateTime completeMakeTime;// 制作完成时间
+    private LocalDateTime verifyTime;      // 核销时间
+    private LocalDateTime cancelTime;      // 取消时间
+    private String cancelReason;           // 取消原因
+    private LocalDateTime createTime;      // 下单时间
+    private List<OrderItemView> items;     // 商品明细列表
 
     public Long getOrderId() { return orderId; }
     public void setOrderId(Long orderId) { this.orderId = orderId; }

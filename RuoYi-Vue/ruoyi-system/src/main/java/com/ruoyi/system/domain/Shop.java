@@ -12,7 +12,18 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
 /**
- * 门店对象 shop
+ * 门店实体（对应 {@code shop}）。
+ *
+ * <h3>关键字段语义（接手必读）</h3>
+ * <ul>
+ *   <li>{@code status}：0=休息中（不可下单） / 1=营业中（可即时单+预订单） / 2=暂停即时接单（仅可预订单）。</li>
+ *   <li>{@code openTime}/{@code closeTime}：营业时段，支持跨午夜（openTime > closeTime 表示跨日，如 18:00–02:00），
+ *       判断见 {@link #isOpenAt}。</li>
+ *   <li>{@code packFee}：每杯包装费（分/杯），订单包装费 = packFee × 总杯数。</li>
+ *   <li>预订单参数：{@code preorderMinMinutes}(最早预约分钟，默认30) / {@code preorderMaxDays}(最长预约天数，默认7) /
+ *       {@code makeLeadMinutes}(制作提前分钟，默认30)。</li>
+ *   <li>{@code delFlag}：逻辑删除标记（0正常/2删除），门店删除后保留行以保证历史订单引用不断裂。</li>
+ * </ul>
  */
 public class Shop extends BaseEntity
 {

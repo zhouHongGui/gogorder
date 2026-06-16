@@ -157,6 +157,7 @@ onLoad(() => {
   else locate()
 })
 
+/** 获取定位并刷新门店列表；失败则展示原因后仍加载（用上次位置或默认顺序）。 */
 async function locate() {
   if (locating.value) return
   locating.value = true
@@ -172,6 +173,7 @@ async function locate() {
   }
 }
 
+/** 获取当前位置：优先 uni.getLocation 原生定位，H5 失败时回退高德 JS API 定位。 */
 function getCurrentLocation(): Promise<Coordinates> {
   return getNativeLocation().catch(async nativeError => {
     if (typeof window === 'undefined' || typeof document === 'undefined') throw nativeError
@@ -238,6 +240,7 @@ function errorMessage(error: unknown): string {
   return failure.errMsg || failure.message || String(error || '')
 }
 
+/** 加载附近门店（带定位/关键字）；优先聚焦当前已选门店，否则第一个。 */
 async function loadShops() {
   loading.value = true
   try {
@@ -260,6 +263,7 @@ function clearKeyword() {
   keyword.value = ''
 }
 
+/** 选定门店：保存为当前门店，提示后返回上一页或跳首页。 */
 function chooseShop(shop: Shop) {
   saveCurrentShop(shop)
   currentShopId.value = shop.id
@@ -282,6 +286,7 @@ function hasCoordinates(shop: Shop): boolean {
   return Number.isFinite(longitude) && Number.isFinite(latitude) && !(longitude === 0 && latitude === 0)
 }
 
+/** 点击地图标记/列表聚焦某门店：更新聚焦态并滚动列表到该项。 */
 function focusShop(shopId: number) {
   if (!shops.value.some(shop => shop.id === shopId)) return
   focusedShopId.value = shopId

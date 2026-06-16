@@ -29,7 +29,20 @@ import com.ruoyi.system.service.IShopService;
 import com.ruoyi.system.service.IStaffShopService;
 
 /**
- * 管理后台门店管理
+ * 管理后台门店管理接口（{@code /api/admin/shop/**}，需管理端登录 + 权限）。
+ *
+ * <h3>管理内容</h3>
+ * <ul>
+ *   <li><b>门店 CRUD</b>：营业时间（支持跨午夜）、预约参数、地理位置等。门店为逻辑删除，保留历史订单引用。</li>
+ *   <li><b>门店状态</b>：{@code /status} 切换营业/休息/暂停（影响是否可下即时单）。</li>
+ *   <li><b>门店员工关联</b> {@code /staff/**}：{@code staff_shop} 多对多，店员默认一家、店长可关联多家。</li>
+ *   <li><b>地图配置</b> {@code /map-config}：返回高德 key/安全密钥供后台选址地图使用。</li>
+ * </ul>
+ *
+ * <h3>约定</h3>
+ * 同 {@link ProductCenterController}：每个接口 {@code @PreAuthorize} 权限码校验，
+ * 写操作加 {@code @Log} 记录操作日志，列表分页走 {@link BaseController}。业务逻辑在
+ * {@link IShopService} / {@link IStaffShopService}。
  */
 @RestController
 @RequestMapping("/api/admin/shop")

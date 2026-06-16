@@ -4,16 +4,23 @@ import java.util.List;
 import com.ruoyi.system.domain.SpecOption;
 
 /**
- * C端商品规格展示对象。
+ * C 端商品规格展示对象（商品详情返回，供规格选择 UI）。
  */
 public class CSpecView
 {
+    /** 模板 ID。 */
     private Long templateId;
+    /** 模板名（如「杯型」）。 */
     private String name;
+    /** 类型：1=单选 2=多选。 */
     private Integer type;
+    /** 是否必选。 */
     private boolean required;
+    /** 最少选择数。 */
     private Integer minSelect;
+    /** 最多选择数。 */
     private Integer maxSelect;
+    /** 启用选项列表（禁用选项已过滤）。 */
     private List<SpecOption> options;
 
     public Long getTemplateId() { return templateId; }

@@ -6,7 +6,7 @@ import com.ruoyi.system.domain.dto.StaffShopRequest;
 import com.ruoyi.system.domain.dto.StaffShopUpdateRequest;
 
 /**
- * 员工-门店关联服务层
+ * 员工-门店关联服务契约（staff_shop 多对多）。员工可关联多家门店，一个为默认。
  */
 public interface IStaffShopService
 {

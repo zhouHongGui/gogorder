@@ -3,12 +3,21 @@ package com.ruoyi.system.domain.dto;
 import java.util.Date;
 import com.ruoyi.system.domain.Category;
 
+/**
+ * 商品-分类关联的扁平视图（JOIN product_category + category 的查询结果）。
+ * {@link #toCategory()} 转成 {@link Category} 实体供展示。
+ */
 public class CProductCategoryView
 {
+    /** 商品 ID。 */
     private Long productId;
+    /** 分类 ID。 */
     private Long categoryId;
+    /** 分类名。 */
     private String name;
+    /** 分类内排序。 */
     private Integer sortOrder;
+    /** 分类状态。 */
     private Integer status;
     private Date createTime;
 

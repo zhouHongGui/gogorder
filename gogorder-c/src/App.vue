@@ -1,5 +1,6 @@
 <script lang="ts">
 export default {
+  /** 应用启动生命周期（uni-app onLaunch），仅打一条启动日志。 */
   onLaunch() {
     console.info('gogorder C端启动')
   }

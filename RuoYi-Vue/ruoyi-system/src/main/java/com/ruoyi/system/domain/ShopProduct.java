@@ -5,7 +5,19 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 
 /**
- * 门店商品 shop_product
+ * 门店商品实体（对应 {@code shop_product}，门店 × 商品的关联 + 售价/库存）。
+ *
+ * <p>这是下单/库存的核心维度：库存存在此表，下单按 shopProductId 扣减。
+ *
+ * <h3>关键字段（接手必读）</h3>
+ * <ul>
+ *   <li>{@code stock}：商品级库存，{@code -1 = 无限库存}。有限库存走条件 UPDATE 原子扣减 + stock_ledger 流水。</li>
+ *   <li>{@code price}：门店售价（分），为 null 表示「使用基础价」（回落 product.basePrice）。
+ *       effectivePrice 是服务层计算的「生效价」（price 非空取 price，否则取 basePrice）。</li>
+ *   <li>{@code status}：0=下架 1=上架。门店可单独控制商品上下架。</li>
+ *   <li>{@code (shopId, productId)} 唯一：同一商品在同一门店只有一条记录。</li>
+ *   <li>productName/productImage/basePrice/shopName：查询时 JOIN 回填的展示字段，非本表列。</li>
+ * </ul>
  */
 public class ShopProduct extends BaseEntity
 {
@@ -22,14 +34,17 @@ public class ShopProduct extends BaseEntity
     @Max(value = 1, message = "商品状态不正确")
     private Integer status;
 
+    /** 商品级库存。-1=无限库存；有限库存原子扣减。 */
     private Integer stock;
 
     @Min(value = 0, message = "排序号不能小于0")
     private Integer sortOrder;
 
+    // 以下为查询时 JOIN 回填的展示字段（非本表持久化列）
     private String productName;
     private String productImage;
     private Integer basePrice;
+    /** 生效价：price 非空取 price，否则取 basePrice（分）。 */
     private Integer effectivePrice;
     private String shopName;
 

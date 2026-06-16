@@ -201,6 +201,7 @@ function closeEditor() {
   editorVisible.value = false
 }
 
+/** 保存昵称/头像：提交后更新本地用户信息并关闭编辑器。 */
 async function save() {
   if (saving.value) return
   saving.value = true
@@ -237,6 +238,7 @@ function showDeveloping(name: string) {
   uni.showToast({ title: `${name}功能即将开放`, icon: 'none' })
 }
 
+/** 退出登录：二次确认后清会话并跳登录页。 */
 async function logout() {
   const result = await uni.showModal({
     title: '退出登录',

@@ -197,6 +197,7 @@ onLoad(async (options?: Record<string, unknown>) => {
   }
 })
 
+/** 选定当前门店：保存为常用门店并提示。 */
 function selectShop() {
   if (!shop.value) return
   saveCurrentShop(shop.value)
@@ -204,6 +205,7 @@ function selectShop() {
   uni.showToast({ title: '已选择此门店', icon: 'success' })
 }
 
+/** 开始点单：保存门店后跳菜单页；门店不支持即时单时强制改预订单。 */
 function startOrder(orderType: OrderType) {
   if (!shop.value) return
   if (orderType === 'NORMAL' && !shop.value.instantAvailable) {

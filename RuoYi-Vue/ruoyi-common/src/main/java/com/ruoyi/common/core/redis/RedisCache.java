@@ -143,6 +143,14 @@ public class RedisCache
         return redisTemplate.delete(key);
     }
 
+    /**
+     * Release a Redis lock only when the stored owner value matches the caller's value.
+     * This owner-checked unlock prevents one caller from deleting another caller's lock.
+     *
+     * @param key lock key
+     * @param value expected lock owner value
+     * @return true when the lock was released
+     */
     public boolean releaseLock(final String key, final String value)
     {
         Long result = (Long) redisTemplate.execute(RELEASE_LOCK_SCRIPT, List.of(key), value);

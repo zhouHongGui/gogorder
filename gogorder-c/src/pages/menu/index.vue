@@ -395,6 +395,7 @@ onShow(() => {
   loadCart()
 })
 
+/** 加载分类列表（带请求竞态保护：返回时若已发起新请求或切了门店则丢弃结果）。 */
 async function loadCategories() {
   const shopId = shop.value?.id
   if (!shopId) return
@@ -409,6 +410,10 @@ async function loadCategories() {
   }
 }
 
+/**
+ * 加载商品列表（按分类/关键字过滤）。带请求竞态保护：分类切换/搜索/切店并发时，
+ * 只采用最新一次请求的结果，避免旧响应覆盖新数据。
+ */
 async function loadProducts() {
   const shopId = shop.value?.id
   if (!shopId) return
@@ -439,6 +444,10 @@ function selectCategory(id: number | null) {
   loadProducts()
 }
 
+/**
+ * 打开商品规格面板：售罄拦截；并行拉取商品详情与捕获「加车飞行动画」起点坐标，
+ * 详情就绪后初始化规格默认选择。
+ */
 async function openProduct(product: Product) {
   if (product.soldOut) {
     uni.showToast({ title: '商品已售罄', icon: 'none' })
@@ -452,6 +461,10 @@ async function openProduct(product: Product) {
   initializeSelections(detail.value.specs)
 }
 
+/**
+ * 初始化规格默认选择：清空旧选择，按模板类型设默认值。
+ * 单选(type=1)：默认选项或必选时取第一个；多选：默认选项（截断到 maxSelect）或必选数量个。
+ */
 function initializeSelections(specs: ProductSpec[]) {
   Object.keys(selections).forEach(key => delete selections[Number(key)])
   specs.forEach(spec => {
@@ -470,6 +483,7 @@ function isSelected(spec: ProductSpec, option: SpecOption): boolean {
   return Array.isArray(selected) ? selected.includes(option.optionId) : selected === option.optionId
 }
 
+/** 选择规格选项：单选可取消（非必选时），多选切换/超限提示。 */
 function selectOption(spec: ProductSpec, option: SpecOption) {
   if (spec.type === 1) {
     if (!spec.required && selections[spec.templateId] === option.optionId) selections[spec.templateId] = ''
@@ -488,6 +502,7 @@ function selectOption(spec: ProductSpec, option: SpecOption) {
   selections[spec.templateId] = selected
 }
 
+/** 确认规格：校验必选规格是否满足最少选择数，通过后加入购物车。 */
 async function confirmSpecs() {
   if (!detail.value) return
   const invalid = detail.value.specs.find(spec => {
@@ -529,6 +544,10 @@ function selectedSpecs(): Record<string, string | string[]> {
   )
 }
 
+/**
+ * 加入购物车：用当前规格选择构造请求，加车期间锁 cartBusy 防并发；
+ * 成功后关闭面板并播放飞入购物车动画。切店后丢弃过期响应。
+ */
 async function addSelectedProduct() {
   if (!detail.value || cartBusy.value) return
   const shopId = shop.value.id
@@ -566,6 +585,7 @@ async function captureProductFlyOrigin(productId: number) {
   if (rect) productFlyOrigin.value = rectCenter(rect)
 }
 
+/** 加车飞行动画：从商品图起点抛物线飞向购物车图标，落点触发购物车弹动；无坐标时仅弹动。 */
 async function playAddToCartAnimation(image?: string) {
   clearTimeout(flyCartTimer)
   clearTimeout(cartBumpTimer)
@@ -630,6 +650,7 @@ function rectCenter(rect: UniApp.NodeInfo) {
   }
 }
 
+/** 修改购物车条目数量：quantity<=0 删除，否则更新。加车锁防并发，切店丢弃过期响应。 */
 async function changeCartQuantity(item: CartItem, quantity: number) {
   if (cartBusy.value) return
   const shopId = shop.value.id
@@ -676,6 +697,7 @@ async function confirmClearCart() {
   }
 }
 
+/** 去结算：购物车非空时跳转确认订单页，带上 shopId 与订单类型。 */
 function checkout() {
   if (!cart.value.totalCount) return
   uni.navigateTo({ url: `/pages/order/confirm?shopId=${shop.value.id}&orderType=${orderType.value}` })

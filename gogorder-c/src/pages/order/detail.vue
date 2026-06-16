@@ -176,6 +176,7 @@ async function loadDetail() {
   }
 }
 
+/** 支付订单：成功后清购物车、刷新详情并弹窗展示取餐号；余额不足时弹窗展示余额与需付金额。 */
 async function pay() {
   if (!order.value || processing.value) return
   processing.value = true
@@ -204,6 +205,7 @@ async function pay() {
   }
 }
 
+/** 取消未支付订单：二次确认后调用接口，成功刷新详情。 */
 async function cancel() {
   if (!order.value || processing.value) return
   const result = await uni.showModal({
@@ -237,6 +239,7 @@ function goBack() {
   uni.navigateBack()
 }
 
+/** 从支付异常中提取 {balance, required}（余额不足时后端附带），用于弹窗展示明细。 */
 function getBalanceError(error: unknown): { balance: number; required: number } | null {
   if (!(error instanceof ApiRequestError) || !error.data || typeof error.data !== 'object') return null
   const data = error.data as { balance?: number; required?: number }

@@ -9,30 +9,50 @@ import com.fasterxml.jackson.annotation.JsonFormat;
  */
 public class CShopView
 {
+    /** 门店 ID。 */
     private Long id;
+    /** 门店名。 */
     private String name;
+    /** 门店图片。 */
     private String image;
+    /** 联系电话。 */
     private String phone;
+    /** 完整地址（省市区+详细）。 */
     private String address;
+    /** 经度。 */
     private BigDecimal longitude;
+    /** 纬度。 */
     private BigDecimal latitude;
 
+    /** 营业开始时间（支持跨午夜）。 */
     @JsonFormat(pattern = "HH:mm")
     private LocalTime openTime;
 
+    /** 营业结束时间（>openTime 表示跨午夜）。 */
     @JsonFormat(pattern = "HH:mm")
     private LocalTime closeTime;
 
+    /** 门店状态：0休息 1营业 2暂停即时。 */
     private Integer status;
+    /** 状态中文描述。 */
     private String statusName;
+    /** 门店公告。 */
     private String notice;
+    /** 每杯包装费（分/杯）。 */
     private Integer packFee;
+    /** 最早预约分钟数。 */
     private Integer preorderMinMinutes;
+    /** 最长预约天数。 */
     private Integer preorderMaxDays;
+    /** 制作提前分钟数。 */
     private Integer makeLeadMinutes;
+    /** 距调用点的距离（米，详情接口为 null）。 */
     private Long distance;
+    /** 当前是否在营业时段。 */
     private boolean isOpen;
+    /** 是否可下即时单（status=1 且在营业时段）。 */
     private boolean instantAvailable;
+    /** 是否可下预订单（恒 true，所有门店均支持预订单）。 */
     private boolean preorderAvailable;
 
     public Long getId() { return id; }

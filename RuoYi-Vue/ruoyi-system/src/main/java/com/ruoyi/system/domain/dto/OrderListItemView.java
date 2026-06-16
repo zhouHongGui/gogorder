@@ -3,26 +3,29 @@ package com.ruoyi.system.domain.dto;
 import java.time.LocalDateTime;
 import java.util.List;
 
+/**
+ * 订单列表项展示对象（订单列表每行）。比详情精简，门店删除时名称兜底「历史门店」。
+ */
 public class OrderListItemView
 {
-    private Long orderId;
-    private String orderNo;
-    private Long shopId;
-    private String shopName;
-    private String orderType;
-    private String orderTypeDesc;
-    private LocalDateTime scheduledPickupTime;
-    private Integer orderStatus;
-    private String orderStatusDesc;
-    private Integer payStatus;
-    private String payStatusDesc;
-    private Integer refundStatus;
-    private String refundStatusDesc;
-    private Integer totalAmount;
-    private Integer itemCount;
-    private String pickupDisplay;
-    private LocalDateTime createTime;
-    private List<OrderItemView> items;
+    private Long orderId;                  // 订单 ID
+    private String orderNo;                // 订单号
+    private Long shopId;                   // 门店 ID
+    private String shopName;               // 门店名（删除时兜底「历史门店」）
+    private String orderType;              // 订单类型 NORMAL/PREORDER
+    private String orderTypeDesc;          // 订单类型中文
+    private LocalDateTime scheduledPickupTime;  // 预约取餐时间
+    private Integer orderStatus;           // 订单状态码
+    private String orderStatusDesc;        // 订单状态中文
+    private Integer payStatus;             // 支付状态码
+    private String payStatusDesc;          // 支付状态中文
+    private Integer refundStatus;          // 退款状态码
+    private String refundStatusDesc;       // 退款状态中文
+    private Integer totalAmount;           // 应付合计（分）
+    private Integer itemCount;             // 总杯数
+    private String pickupDisplay;          // 取餐展示号
+    private LocalDateTime createTime;      // 下单时间
+    private List<OrderItemView> items;     // 商品明细列表
 
     public Long getOrderId() { return orderId; }
     public void setOrderId(Long orderId) { this.orderId = orderId; }

@@ -86,32 +86,41 @@
         <include refid="userOrderFilter"/>
     </select>
 
+    <!-- 支付成功更新订单：待支付(0,0) → 已接单+已支付+无退款(1,1,0)，写入取餐号/支付/接单时间。
+         条件 WHERE 保证只有待支付订单能支付；rows=0 表示并发期间状态已变，调用方据此回滚。 -->
     <update id="updateOrderStatus">
         update biz_order set order_status = #{orderStatus}, pay_status = #{payStatus},
             refund_status = #{refundStatus}, pay_time = #{payTime}, accept_time = #{acceptTime},
             pickup_token = #{pickupToken}, pickup_display = #{pickupDisplay}, pickup_date = #{pickupDate}
         where id = #{id} and order_status = 0 and pay_status = 0
     </update>
+    <!-- 退款：已接单+已支付+未退款(1,1,0) → 已取消+已退款+退款成功(5,2,1)。制作中及以后不可退。 -->
     <update id="updateOrderForRefund">
         update biz_order set order_status = #{orderStatus}, pay_status = #{payStatus},
             refund_status = #{refundStatus}, cancel_time = #{cancelTime}, cancel_reason = #{cancelReason}
         where id = #{id} and order_status = 1 and pay_status = 1 and refund_status = 0
     </update>
+    <!-- 取消未支付订单：待支付(0,0) → 已取消。rows=0 表示并发期间已被支付/取消。 -->
     <update id="cancelOrder">
         update biz_order set order_status = #{orderStatus}, pay_status = #{payStatus},
             cancel_time = #{cancelTime}, cancel_reason = #{cancelReason}
         where id = #{id} and order_status = 0 and pay_status = 0
     </update>
 
+    <!-- 超时扫单：查待支付且超 deadline 的订单，id 游标分页（id > minId 升序），供定时任务批处理。
+         走复合索引 idx_timeout_sweep(order_status, pay_status, id, create_time)。 -->
     <select id="selectPendingTimeoutOrders" resultMap="BizOrderResult">
         <include refid="selectOrderColumns"/>
         where order_status = 0 and pay_status = 0 and create_time &lt; #{deadline} and id &gt; #{minId}
         order by id asc limit #{limit}
     </select>
+    <!-- 分配取餐号序号：首次 INSERT=1，之后 ON DUPLICATE KEY UPDATE 自增。
+         同事务内随后用 selectPickupSeq 读出序号；事务回滚则序号回滚（无空洞）。 -->
     <insert id="allocatePickupDisplay">
         insert into pickup_sequence(shop_id, pickup_date, current_seq) values(#{shopId}, #{pickupDate}, 1)
         on duplicate key update current_seq = current_seq + 1
     </insert>
+    <!-- 读取刚分配的取餐号序号（配合 allocatePickupDisplay 同事务使用）。 -->
     <select id="selectPickupSeq" resultType="int">
         select current_seq from pickup_sequence where shop_id = #{shopId} and pickup_date = #{pickupDate}
     </select>

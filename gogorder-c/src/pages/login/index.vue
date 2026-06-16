@@ -66,6 +66,7 @@ if (getToken()) {
   uni.reLaunch({ url: '/pages/index/index' })
 }
 
+/** 发送短信验证码：校验手机号格式后调用接口，启动倒计时；mock 模式展示返回的 mockCode。 */
 async function handleSendSms() {
   if (!/^1\d{10}$/.test(phone.value)) {
     uni.showToast({ title: '请输入正确手机号', icon: 'none' })
@@ -86,6 +87,7 @@ async function handleSendSms() {
   }
 }
 
+/** 短信验证码登录：校验手机号+验证码格式后登录，成功走 finishLogin。 */
 async function handleSmsLogin() {
   if (!/^1\d{10}$/.test(phone.value) || !/^\d{6}$/.test(code.value)) {
     uni.showToast({ title: '请填写手机号和验证码', icon: 'none' })
@@ -99,6 +101,7 @@ async function handleSmsLogin() {
   }
 }
 
+/** 微信登录（小程序）：调 uni.login 拿 code 换 openid，已绑定直接登录，未绑定存 bindTicket 待授权手机号。 */
 function handleWechatLogin() {
   loggingIn.value = true
   uni.login({
@@ -122,6 +125,7 @@ function handleWechatLogin() {
   })
 }
 
+/** 微信授权手机号回调：用 phone code + bindTicket 完成绑定并登录。 */
 async function handlePhoneNumber(event: { detail: { code?: string } }) {
   const phoneCode = event.detail.code
   if (!phoneCode) {
@@ -131,6 +135,7 @@ async function handlePhoneNumber(event: { detail: { code?: string } }) {
   finishLogin(await bindWechatPhone(bindTicket.value, phoneCode))
 }
 
+/** 登录收尾：保存会话（token+用户信息）后跳首页。 */
 function finishLogin(data: LoginResult) {
   saveSession(data)
   uni.reLaunch({ url: '/pages/index/index' })

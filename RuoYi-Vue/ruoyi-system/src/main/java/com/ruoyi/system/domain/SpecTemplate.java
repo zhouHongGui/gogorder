@@ -8,7 +8,17 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 /**
- * 规格模板 spec_template
+ * 规格模板实体（对应 {@code spec_template}，如「杯型」「温度」「甜度」）。
+ *
+ * <p>模板可被多个商品引用（多对多）。模板下挂多个 {@link SpecOption}（具体选项）。
+ *
+ * <h3>关键约束（接手必读）</h3>
+ * <ul>
+ *   <li>{@code type}：1=单选（maxSelect 必须=1） / 2=多选。</li>
+ *   <li>{@code isRequired}：1=必选（minSelect 必须 ≥1） / 0=可选。</li>
+ *   <li>minSelect ≤ maxSelect；单选模板 maxSelect=1。</li>
+ *   <li>{@code optionCount}/{@code defaultOptionCount}：查询时回填的统计字段（选项数/默认选项数），非列。</li>
+ * </ul>
  */
 public class SpecTemplate extends BaseEntity
 {

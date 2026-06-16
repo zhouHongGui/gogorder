@@ -84,6 +84,7 @@ public class RateLimiterAspect
         }
         else if (rateLimiter.limitType() == LimitType.USER)
         {
+            // USER rate limit keys rely on CAuthTokenFilter injecting the C user id into the request.
             Object userId = ServletUtils.getRequest().getAttribute(CAuthConstants.USER_ID_ATTRIBUTE);
             if (userId == null)
             {

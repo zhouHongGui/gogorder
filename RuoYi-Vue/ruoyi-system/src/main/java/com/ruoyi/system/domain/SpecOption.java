@@ -7,15 +7,27 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
 /**
- * 规格选项 spec_option
+ * 规格选项实体（对应 {@code spec_option}，如「大杯」「中杯」「去冰」「全糖」）。
+ *
+ * <h3>关键不变量（接手必读）</h3>
+ * <ul>
+ *   <li>{@code optionId}：全局唯一且<b>创建后不可变</b>（业务主键，下单时前端传它）。
+ *       之所以独立于自增 id，是为了保证历史订单快照里的 optionId 永远可解析。</li>
+ *   <li>{@code priceAdd}：该选项加价（分），叠加到商品基础价上。</li>
+ *   <li>{@code isDefault}：1=默认选中（满足 minSelect 时自动带出）；单选模板最多 1 个默认。</li>
+ *   <li>{@code status}：0=禁用 1=启用。禁用后不参与下单/展示，但保留行以保证历史订单引用。</li>
+ * </ul>
  */
 public class SpecOption extends BaseEntity
 {
     private static final long serialVersionUID = 1L;
 
+    /** 自增主键。 */
     private Long id;
+    /** 业务主键（全局唯一 UUID，创建后不可变），下单时前端传此值。 */
     private String optionId;
 
+    /** 所属规格模板 ID（创建后不可改）。 */
     private Long templateId;
 
     @NotBlank(message = "选项名称不能为空")

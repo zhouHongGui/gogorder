@@ -105,7 +105,10 @@ public class SecurityConfig
                 permitAllUrl.getUrls().forEach(url -> requests.requestMatchers(url).permitAll());
                 // 对于登录login 注册register 验证码captchaImage 允许匿名访问
                 requests.requestMatchers("/login", "/register", "/captchaImage").permitAll()
+                    // 【C 端公开路径】登录认证、门店/分类/商品浏览无需登录（需与 CAuthTokenFilter.shouldNotFilter 保持一致）
                     .requestMatchers("/api/c/auth/**", "/api/c/shop/**", "/api/c/category/**", "/api/c/product/**").permitAll()
+                    // 【C 端鉴权】其余 /api/c/** 全部要求已认证。认证由 CAuthTokenFilter 完成（解析 C 端 JWT
+                    //   并构建 Authentication 注入 SecurityContext），Security 在此做兜底授权校验。
                     .requestMatchers("/api/c/**").authenticated()
                     // 静态资源，可匿名访问
                     .requestMatchers(HttpMethod.GET, "/", "/*.html", "/**.html", "/**.css", "/**.js", "/profile/**").permitAll()

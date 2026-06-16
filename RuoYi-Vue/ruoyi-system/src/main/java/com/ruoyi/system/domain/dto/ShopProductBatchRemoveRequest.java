@@ -4,10 +4,11 @@ import java.util.List;
 import jakarta.validation.constraints.NotEmpty;
 
 /**
- * 批量移除门店商品请求
+ * 批量下架门店商品请求。存在进行中订单引用的商品会被拒绝（先处理订单再下架）。
  */
 public class ShopProductBatchRemoveRequest
 {
+    /** 待下架的 shop_product.id 列表。 */
     @NotEmpty(message = "请选择要移除的门店商品")
     private List<Long> ids;
 

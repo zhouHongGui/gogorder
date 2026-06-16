@@ -114,6 +114,7 @@ function markerContent(shop: Shop): string {
   </div>`
 }
 
+/** H5 端初始化高德地图：加载 AMap → 创建 Map 实例 → 同步门店标记。失败时记录错误信息。 */
 async function initH5Map() {
   if (typeof window === 'undefined' || typeof document === 'undefined') return
   if (!document.getElementById(mapContainerId)) {
@@ -133,6 +134,7 @@ async function initH5Map() {
   }
 }
 
+/** 同步 H5 地图标记：清空后重建附近门店标记，绑定点击事件，并复位中心点。 */
 function syncH5Markers() {
   if (!map || !amap) return
   map.clearMap()

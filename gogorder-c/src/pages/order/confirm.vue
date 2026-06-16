@@ -96,6 +96,7 @@ import type { Cart } from '../../types/cart'
 import type { OrderType, PreorderSlot, Shop } from '../../types/shop'
 import { ApiRequestError } from '../../utils/request'
 
+/** 生成空购物车对象（初始化用）。 */
 const emptyCart = (): Cart => ({ shopId: null, shopName: '', items: [], totalAmount: 0, totalCount: 0 })
 const shop = ref<Shop | null>(null)
 const cart = ref<Cart>(emptyCart())
@@ -104,14 +105,24 @@ const slots = ref<PreorderSlot[]>([])
 const slotIndex = ref(0)
 const remark = ref('')
 const submitting = ref(false)
+// 下单幂等令牌：页面级唯一，submit 失败重试复用同一 token（后端按 token 幂等返回同一订单）。
 const submitToken = createSubmitToken()
 
+/** 包装费（分）= 总杯数 × 每杯包装费。 */
 const packFee = computed(() => cart.value.totalCount * Number(shop.value?.packFee || 0))
+/** 应付合计（分）= 商品金额 + 包装费。 */
 const totalAmount = computed(() => cart.value.totalAmount + packFee.value)
+/** 预约时段展示文案列表（如「今天 09:30」）。 */
 const slotLabels = computed(() => slots.value.map(slot => `${slot.dateLabel} ${slot.timeLabel}`))
+/** 当前选中的预约时段。 */
 const selectedSlot = computed(() => slots.value[slotIndex.value])
+/** 当前选中时段的展示文案。 */
 const selectedSlotLabel = computed(() => selectedSlot.value ? slotLabels.value[slotIndex.value] : '')
 
+/**
+ * 页面加载：从路由参数取 shopId/orderType，并行拉取门店详情与购物车。
+ * 门店不支持即时单时强制切预订单；购物车为空则提示并返回。
+ */
 onLoad(async (options?: Record<string, unknown>) => {
   const shopId = Number(options?.shopId)
   orderType.value = options?.orderType === 'PREORDER' ? 'PREORDER' : 'NORMAL'
@@ -120,6 +131,7 @@ onLoad(async (options?: Record<string, unknown>) => {
     return
   }
   try {
+    // 并行拉门店详情与购物车，减少等待。
     const [shopData, cartData] = await Promise.all([getShopDetail(shopId), getCart(shopId)])
     shop.value = shopData
     cart.value = cartData
@@ -134,12 +146,14 @@ onLoad(async (options?: Record<string, unknown>) => {
   }
 })
 
+/** 加载预订单可选取餐时段，重置选中索引为第一个。 */
 async function loadSlots() {
   if (!shop.value) return
   slots.value = await getPreorderSlots(shop.value.id)
   slotIndex.value = 0
 }
 
+/** 选择即时单：门店不支持即时单时拦截提示。 */
 function selectNormal() {
   if (!shop.value?.instantAvailable) {
     uni.showToast({ title: '当前门店暂不支持即时单', icon: 'none' })
@@ -148,17 +162,25 @@ function selectNormal() {
   orderType.value = 'NORMAL'
 }
 
+/** 选择预订单：首次切到预订单时加载时段。 */
 async function selectPreorder() {
   orderType.value = 'PREORDER'
   if (!slots.value.length) await loadSlots()
 }
 
+/** 预约时段选择器变更回调，更新选中索引。 */
 function onSlotChange(event: { detail: { value: string | number } }) {
   slotIndex.value = Number(event.detail.value)
 }
 
+/**
+ * 确认下单并支付（下单 → 支付 → 清购物车 → 跳结果页）。
+ * 下单成功但支付失败时，带 orderId 跳结果页（结果页可重新支付）；
+ * 下单前失败则仅 toast 提示。submitToken 保证幂等，网络重试不会重复下单。
+ */
 async function submitAndPay() {
   if (!shop.value || !cart.value.totalCount || submitting.value) return
+  // 预订单必须选时段。
   if (orderType.value === 'PREORDER' && !selectedSlot.value) {
     uni.showToast({ title: '请选择预约取餐时间', icon: 'none' })
     return
@@ -179,18 +201,23 @@ async function submitAndPay() {
       }))
     })
     orderId = submitted.orderId
+    // 下单成功后立即支付。
     const paid = await payOrder(orderId)
+    // 支付成功清空购物车并跳结果页。
     await clearCart(shop.value.id)
     uni.redirectTo({
       url: `/pages/order/result?orderId=${orderId}&success=true&balanceAfter=${paid.balanceAfter}`
     })
   } catch (error) {
+    // 格式化错误信息（余额不足时展示余额与需付金额）。
     const message = formatOrderError(error)
     if (orderId) {
+      // 已下单但支付失败：带 orderId 跳结果页（支持重新支付）。
       uni.redirectTo({
         url: `/pages/order/result?orderId=${orderId}&success=false&error=${encodeURIComponent(message)}`
       })
     } else {
+      // 下单前失败：仅 toast。
       uni.showToast({ title: message, icon: 'none' })
     }
   } finally {
@@ -198,6 +225,10 @@ async function submitAndPay() {
   }
 }
 
+/**
+ * 格式化订单错误信息。余额不足时从 error.data 取 {balance, required} 展示明细，
+ * 否则返回通用错误消息。
+ */
 function formatOrderError(error: unknown): string {
   if (error instanceof ApiRequestError && error.data && typeof error.data === 'object') {
     const data = error.data as { balance?: number; required?: number }
@@ -208,10 +239,12 @@ function formatOrderError(error: unknown): string {
   return error instanceof Error ? error.message : '订单处理失败'
 }
 
+/** 生成下单幂等令牌（时间戳+两段随机），页面级唯一。 */
 function createSubmitToken(): string {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}-${Math.random().toString(16).slice(2)}`
 }
 
+/** 分转元展示（除以 100 保留两位）。 */
 function money(value: number): string {
   return (Number(value || 0) / 100).toFixed(2)
 }

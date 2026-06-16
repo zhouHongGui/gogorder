@@ -179,6 +179,7 @@ function selectShop() {
   uni.navigateTo({ url: '/pages/shop/select' })
 }
 
+/** 开始点单：未选门店则跳选店页；已选则按门店可即时态决定订单类型后跳菜单页。 */
 function startOrder(label: string) {
   if (!currentShop.value.id) {
     selectShop()
@@ -204,6 +205,7 @@ function openProfile() {
   uni.switchTab({ url: '/pages/profile/index' })
 }
 
+/** 刷新当前门店：从本地取选中门店，再拉后端最新详情合并保存；同时刷新热门商品。无选中则用默认占位。 */
 async function refreshCurrentShop() {
   const selected = getCurrentShop()
   if (!selected?.id) {
@@ -223,6 +225,7 @@ async function refreshCurrentShop() {
   }
 }
 
+/** 刷新热门商品：取门店商品前 3 个组装卡片，失败回退默认推荐。 */
 async function refreshPopularProducts(shopId: number) {
   try {
     const products = await getProducts({ shopId })

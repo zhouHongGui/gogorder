@@ -41,6 +41,10 @@ const errorMessage = ref('支付失败，请重试')
 const balanceAfter = ref<number | null>(null)
 const order = ref<OrderDetail | null>(null)
 
+/**
+ * 页面加载：从路由参数读 orderId/success/error/balanceAfter。
+ * 以订单实际支付态(payStatus=1)为准修正 success；无 orderId 直接结束加载。
+ */
 onLoad(async (options?: Record<string, unknown>) => {
   const orderId = Number(options?.orderId)
   success.value = options?.success === 'true'
@@ -53,12 +57,14 @@ onLoad(async (options?: Record<string, unknown>) => {
   }
   try {
     order.value = await getOrderDetail(orderId)
+    // 以服务端实际支付态为准（覆盖路由参数的 success，避免误判）。
     success.value = order.value.payStatus === 1
   } finally {
     loading.value = false
   }
 })
 
+/** 重新支付（支付失败/超时后再次尝试）。成功则刷新订单详情与余额，切到成功态。 */
 async function retryPay() {
   if (!order.value || paying.value) return
   paying.value = true
@@ -76,14 +82,17 @@ async function retryPay() {
   }
 }
 
+/** 返回首页（tabBar 页用 switchTab）。 */
 function goHome() {
   uni.switchTab({ url: '/pages/index/index' })
 }
 
+/** 分转元展示。 */
 function money(value: number): string {
   return (Number(value || 0) / 100).toFixed(2)
 }
 
+/** 格式化时间（去掉 T 与秒，显示到分钟）。 */
 function formatTime(value: string): string {
   return value.replace('T', ' ').slice(0, 16)
 }

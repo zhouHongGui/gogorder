@@ -29,7 +29,26 @@ import com.ruoyi.system.domain.dto.StockAdjustRequest;
 import com.ruoyi.system.service.IProductCenterService;
 
 /**
- * 管理后台商品中心
+ * 管理后台商品中心接口（{@code /api/admin/**}，需管理端登录 + 权限）。
+ *
+ * <h3>管理四类对象</h3>
+ * <ul>
+ *   <li><b>分类</b> {@code /category/**}：商品分类 CRUD。</li>
+ *   <li><b>规格模板/选项</b> {@code /spec-template/**}、{@code /spec-option/**}：
+ *       规格定义，optionId 全局唯一不可变；选项支持禁用（保留历史引用）。</li>
+ *   <li><b>商品库</b> {@code /product/**}：商品主数据 CRUD（含多分类、多规格模板关联）。</li>
+ *   <li><b>门店商品</b> {@code /shop-product/**}：商品分配到门店、改售价/状态、库存调整、批量下架。</li>
+ * </ul>
+ *
+ * <h3>约定（接手必读）</h3>
+ * <ul>
+ *   <li><b>权限</b>：每个接口 {@code @PreAuthorize("@ss.hasPermi('admin:xxx:yyy')")}，
+ *       权限码对应 {@code sys_menu}，由角色分配。新增接口需同步在菜单/角色配置权限码。</li>
+ *   <li><b>操作日志</b>：写操作加 {@code @Log}，自动记录到 {@code sys_oper_log} 便于审计。</li>
+ *   <li><b>分页</b>：列表接口继承 {@link BaseController}，{@code startPage()} + {@code getDataTable()}
+ *       走若依 PageHelper，前端用 {@code rows/total}。</li>
+ *   <li>业务规则与校验全部在 {@link IProductCenterService}，控制器只做转发。</li>
+ * </ul>
  */
 @RestController
 @RequestMapping("/api/admin")

@@ -1,8 +1,15 @@
 package com.ruoyi.common.exception;
 
 /**
- * 业务异常
- * 
+ * 业务异常（预期内的业务校验失败，如「库存不足」「余额不足」「订单状态不允许支付」）。
+ *
+ * <p>用法：业务层 {@code throw new ServiceException("xxx")} 或带 code {@code new ServiceException("余额不足", 400)}，
+ * 可链式 {@code .setData(...)} 携带业务数据（如 {balance, required}）。
+ * 由 {@code GlobalExceptionHandler} 统一捕获转成 AjaxResult 返回前端。
+ *
+ * <p><b>注意</b>：这是「正常业务流程」而非系统故障，全局异常处理器以 WARN 级别记录（不带堆栈），
+ * 与真正的 RuntimeException/Exception（系统故障，ERROR + 堆栈 + 返回「系统繁忙」）区分。
+ *
  * @author ruoyi
  */
 public final class ServiceException extends RuntimeException

@@ -142,6 +142,10 @@ function selectTab(scope: DateScope) {
   loadOrders(true)
 }
 
+/**
+ * 加载订单列表。reset=true 重置到第一页；否则加载下一页（翻页）。
+ * 用 requestSerial 竞态保护：切 tab/下拉并发时只采用最新请求结果。
+ */
 async function loadOrders(reset = false) {
   if (reset) {
     pageNum.value = 1
@@ -172,6 +176,7 @@ async function loadOrders(reset = false) {
   }
 }
 
+/** 触底加载更多：有下一页且非加载中时翻页。 */
 function loadMore() {
   if (!hasMore.value || loading.value || loadingMore.value) return
   pageNum.value += 1

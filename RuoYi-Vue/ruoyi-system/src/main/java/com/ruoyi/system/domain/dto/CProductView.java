@@ -9,24 +9,40 @@ import com.ruoyi.system.domain.Category;
  */
 public class CProductView
 {
+    /** 门店商品 ID。 */
     private Long shopProductId;
+    /** 商品 ID。 */
     private Long productId;
+    /** 商品名。 */
     private String name;
+    /** 商品主图。 */
     private String image;
+    /** 商品描述。 */
     private String description;
+    /** 生效价（分，门店售价或基础价）。 */
     private Integer price;
+    /** 展示起售价（分，= price + 必选规格最小加价）。 */
     private Integer displayPrice;
+    /** 库存（-1=无限库存）。 */
     private Integer stock;
+    /** 是否售罄（stock=0）。 */
     private boolean soldOut;
+    /** 是否有规格（决定详情页是否拉规格）。 */
     private boolean hasSpecs;
+    /** 近 30 天销量（批量 GROUP BY 查询回填）。 */
     private Long monthlySales;
+    /** 标签列表。 */
     private List<String> tags;
+    /** 所属分类列表（商品可多分类）。 */
     private List<Category> categories;
+    /** 规格列表（详情接口返回完整规格，列表接口返回空）。 */
     private List<CSpecView> specs;
 
+    /** 标签 JSON（DB 原始字段，不返回前端）。 */
     @JsonIgnore
     private String tagsJson;
 
+    /** 规格模板 ID JSON（DB 原始字段，不返回前端）。 */
     @JsonIgnore
     private String specTemplateIdsJson;
 

@@ -7,7 +7,10 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
 /**
- * 商品分类 category
+ * 商品分类实体（对应 {@code category}）。
+ *
+ * <p>商品与分类是多对多（{@code product_category} 关联表），一个商品可属多个分类。
+ * 用于菜单页顶部分类筛选与商品归类。{@code status}：1=启用 0=禁用。
  */
 public class Category extends BaseEntity
 {

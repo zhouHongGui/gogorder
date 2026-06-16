@@ -9,7 +9,18 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
 /**
- * 商品库 product
+ * 商品库主数据实体（对应 {@code product}）。
+ *
+ * <p>商品是「商品库 → 分配到门店（shop_product）」两级模型：商品库存基础价/规格模板，
+ * 门店商品可覆盖售价、设置库存。商品可属多个分类（product_category 关联表）。
+ *
+ * <h3>JSON 字段（接手必读）</h3>
+ * images/tags/specTemplateIds 是 List，DB 以 JSON 字符串存储（imagesJson/tagsJson/specTemplateIdsJson），
+ * {@code @JsonIgnore} 的 xxxJson 不返回前端，由 Service 层负责序列化/反序列化。
+ *
+ * <h3>非持久化字段</h3>
+ * categoryId/categoryIds/categories/specTemplates 仅用于管理后台读写商品时的关联数据，
+ * 非直接映射列。金额单位：分。
  */
 public class Product extends BaseEntity
 {

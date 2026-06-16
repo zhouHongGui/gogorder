@@ -18,18 +18,43 @@ import com.ruoyi.system.mapper.ShopMapper;
 import com.ruoyi.system.service.ICShopService;
 
 /**
- * C端门店查询服务实现。
+ * C 端门店查询服务（公开，无需登录）。
+ *
+ * <h3>职责</h3>
+ * <ul>
+ *   <li><b>附近门店</b>：按经纬度查询门店并计算距离（Haversine 球面距离），返回营业态/可即时单/可预订单等展示字段。</li>
+ *   <li><b>门店详情</b>：组装门店完整信息供菜单页/下单页。</li>
+ *   <li><b>预订单时段</b>：按门店营业时间 + 预约窗口生成可选的取餐时段（每 30 分钟一档）。</li>
+ * </ul>
+ *
+ * <h3>业务要点（接手必读）</h3>
+ * <ul>
+ *   <li><b>营业时间跨午夜</b>：open_time > close_time 表示跨日（如 18:00–02:00），判断见 {@link Shop#isOpenAt}。</li>
+ *   <li><b>即时单可用</b>：status=1（营业中）且当前在营业时段内。休息/暂停门店只能下预订单。</li>
+ *   <li><b>预订单时段</b>：从「现在 + preorderMinMinutes」向上取整到半小时开始，到「现在 + preorderMaxDays」结束，
+ *       只保留落在营业时段内的整点/半点。</li>
+ * </ul>
  */
 @Service
 public class CShopServiceImpl implements ICShopService
 {
+    /** 地球半径（米），用于 Haversine 距离计算。 */
     private static final double EARTH_RADIUS_METERS = 6_371_000D;
+    /** 附近门店返回上限。 */
     private static final int NEARBY_SHOP_LIMIT = 50;
+    /** 时段时间格式。 */
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
 
     @Autowired
     private ShopMapper shopMapper;
 
+    /**
+     * 附近门店列表。校验经纬度后查询，按距离远近（DB 侧粗排）返回，并计算每家门店到调用点的距离。
+     *
+     * @param longitude 调用点经度（可选）
+     * @param latitude  调用点纬度（可选）
+     * @param keyword   名称关键字（可选）
+     */
     @Override
     public List<CShopView> selectNearbyShops(BigDecimal longitude, BigDecimal latitude, String keyword)
     {
@@ -41,6 +66,7 @@ public class CShopServiceImpl implements ICShopService
                 .toList();
     }
 
+    /** 门店详情（不计算距离）。 */
     @Override
     public CShopView selectShopDetail(Long id)
     {
@@ -48,6 +74,10 @@ public class CShopServiceImpl implements ICShopService
         return buildView(shop, null, null, LocalTime.now());
     }
 
+    /**
+     * 生成预订单可选取餐时段：从「现在+最早预约分钟」向上取整到半小时，到「现在+最大预约天数」，
+     * 逐日逐半小时枚举，过滤出落在营业时段内的档位。
+     */
     @Override
     public List<CPreorderSlot> selectPreorderSlots(Long id)
     {
@@ -55,26 +85,34 @@ public class CShopServiceImpl implements ICShopService
         int minMinutes = StringUtils.nvl(shop.getPreorderMinMinutes(), 30);
         int maxDays = StringUtils.nvl(shop.getPreorderMaxDays(), 7);
         LocalDateTime now = LocalDateTime.now();
-        LocalDateTime start = ceilToHalfHour(now.plusMinutes(minMinutes));
+        LocalDateTime start = ceilToHalfHour(now.plusMinutes(minMinutes));   // 起点向上取整到半小时
         LocalDateTime end = now.plusDays(maxDays);
+        // 按天枚举，每天拆成 48 个半小时档，过滤窗口与营业时段。
         return start.toLocalDate().datesUntil(end.toLocalDate().plusDays(1))
                 .flatMap(date -> buildDaySlots(shop, date, start, end).stream())
                 .toList();
     }
 
+    /** 枚举某一天的半小时档位，保留在 [start,end] 窗口内且营业时段开放的档位。 */
     private List<CPreorderSlot> buildDaySlots(Shop shop, LocalDate date, LocalDateTime start, LocalDateTime end)
     {
-        return java.util.stream.IntStream.range(0, 48)
+        return java.util.stream.IntStream.range(0, 48)   // 48 个半小时 = 24 小时
                 .mapToObj(index -> date.atStartOfDay().plusMinutes(index * 30L))
                 .filter(slot -> !slot.isBefore(start) && !slot.isAfter(end))
-                .filter(slot -> shop.isOpenAt(slot.toLocalTime()))
+                .filter(slot -> shop.isOpenAt(slot.toLocalTime()))   // 仅营业时段
                 .map(slot -> new CPreorderSlot(slot, dateLabel(slot.toLocalDate()), slot.format(TIME_FORMATTER)))
                 .toList();
     }
 
+    /**
+     * 组装门店展示视图，含营业态判定与距离计算。
+     *
+     * @param longitude 调用点经度（详情接口传 null，不计算距离）
+     */
     private CShopView buildView(Shop shop, BigDecimal longitude, BigDecimal latitude, LocalTime now)
     {
         boolean withinBusinessHours = shop.isOpenAt(now);
+        // 即时单可用 = 门店状态营业中(1) 且当前在营业时段。
         boolean instantAvailable = Integer.valueOf(1).equals(shop.getStatus()) && withinBusinessHours;
         CShopView view = new CShopView();
         view.setId(shop.getId());
@@ -96,10 +134,11 @@ public class CShopServiceImpl implements ICShopService
         view.setDistance(distance(longitude, latitude, shop.getLongitude(), shop.getLatitude()));
         view.setIsOpen(withinBusinessHours);
         view.setInstantAvailable(instantAvailable);
-        view.setPreorderAvailable(true);
+        view.setPreorderAvailable(true);   // 预订单对所有门店开放
         return view;
     }
 
+    /** 校验门店存在并返回。 */
     private Shop requireShop(Long id)
     {
         if (id == null)
@@ -114,6 +153,7 @@ public class CShopServiceImpl implements ICShopService
         return shop;
     }
 
+    /** 拼接完整地址：省+市+区+详细地址。 */
     private String fullAddress(Shop shop)
     {
         return StringUtils.join(
@@ -123,6 +163,9 @@ public class CShopServiceImpl implements ICShopService
                 StringUtils.defaultString(shop.getAddress()));
     }
 
+    /**
+     * 门店状态中文描述。status：0=休息中，2=暂停即时接单（仅可预订单），1=营业中（再细分是否在营业时段）。
+     */
     private String statusName(Integer status, boolean withinBusinessHours)
     {
         if (Integer.valueOf(0).equals(status))
@@ -136,6 +179,9 @@ public class CShopServiceImpl implements ICShopService
         return withinBusinessHours ? "营业中" : "非营业时间";
     }
 
+    /**
+     * Haversine 球面距离计算（米）。任一坐标缺失返回 null。
+     */
     private Long distance(BigDecimal fromLongitude, BigDecimal fromLatitude,
             BigDecimal toLongitude, BigDecimal toLatitude)
     {
@@ -155,8 +201,14 @@ public class CShopServiceImpl implements ICShopService
                 .longValue();
     }
 
+    /**
+     * 校验经纬度：要么都传、要么都不传；范围合法。
+     *
+     * @throws ServiceException 仅传一个 / 范围越界
+     */
     private void validateLocation(BigDecimal longitude, BigDecimal latitude)
     {
+        // 经纬度必须同时传或同时不传。
         if ((longitude == null) != (latitude == null))
         {
             throw new ServiceException("经纬度必须同时传入");
@@ -170,6 +222,9 @@ public class CShopServiceImpl implements ICShopService
         }
     }
 
+    /**
+     * 向上取整到半小时（秒/纳秒清零），用于预订单时段起点对齐。
+     */
     private LocalDateTime ceilToHalfHour(LocalDateTime value)
     {
         LocalDateTime minute = value.withSecond(0).withNano(0);
@@ -181,6 +236,7 @@ public class CShopServiceImpl implements ICShopService
         return minute.plusMinutes(30 - remainder);
     }
 
+    /** 预订单日期展示文案：今天/明天/「M月D日」。 */
     private String dateLabel(LocalDate date)
     {
         LocalDate today = LocalDate.now();
