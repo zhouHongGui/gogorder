@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8" ?> <!-- XML 声明，UTF-8 编码 -->
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd"> <!-- MyBatis Mapper DTD 声明 -->
+<mapper namespace="com.ruoyi.system.mapper.ShopLabelPrinterMapper"> <!-- 命名空间绑定到 ShopLabelPrinterMapper 接口 -->
+
+    <resultMap type="ShopLabelPrinter" id="ShopLabelPrinterResult"> <!-- 结果映射：把数据库列映射到实体字段 -->
+        <id property="id" column="id" /> <!-- 主键 id -->
+        <result property="shopId" column="shop_id" /> <!-- 门店 ID -->
+        <result property="shopName" column="shop_name" /> <!-- 门店名（联表 shop.name 别名） -->
+        <result property="sn" column="sn" /> <!-- 打印机编号 -->
+        <result property="printerKey" column="printer_key" /> <!-- 设备密钥 -->
+        <result property="printerName" column="printer_name" /> <!-- 设备备注名 -->
+        <result property="printWidth" column="print_width" /> <!-- 标签宽度 -->
+        <result property="printHeight" column="print_height" /> <!-- 标签高度 -->
+        <result property="status" column="status" /> <!-- 启用状态 -->
+        <result property="feieStatus" column="feie_status" /> <!-- 飞鹅状态描述 -->
+        <result property="lastStatusTime" column="last_status_time" /> <!-- 最近状态查询时间 -->
+        <result property="delFlag" column="del_flag" /> <!-- 逻辑删除标志 -->
+        <result property="remark" column="remark" /> <!-- 备注（继承自 BaseEntity） -->
+        <result property="createTime" column="create_time" /> <!-- 创建时间 -->
+        <result property="updateTime" column="update_time" /> <!-- 更新时间 -->
+    </resultMap>
+
+    <sql id="selectPublicColumns"> <!-- 公共查询列片段：不含密钥 printer_key，列表/详情默认不暴露密钥 -->
+        p.id, p.shop_id, s.name as shop_name, p.sn, p.printer_name, p.print_width, p.print_height,
+        p.status, p.feie_status, p.last_status_time, p.del_flag, p.remark, p.create_time, p.update_time
+    </sql>
+
+    <select id="selectEnabledByShopId" parameterType="Long" resultMap="ShopLabelPrinterResult"> <!-- 按门店查询启用的打印机（订单打印用） -->
+        select <include refid="selectPublicColumns"/> <!-- 引用公共列 -->
+        from shop_label_printer p
+        left join shop s on s.id = p.shop_id <!-- 左连接门店表取门店名 -->
+        where p.shop_id = #{shopId} and p.status = 1 and p.del_flag = 0 <!-- 指定门店、启用、未删除 -->
+        order by p.id asc <!-- 按主键升序，保证多台打印机打印顺序稳定 -->
+    </select>
+
+    <select id="selectShopLabelPrinterList" parameterType="ShopLabelPrinter" resultMap="ShopLabelPrinterResult"> <!-- 管理后台条件列表查询 -->
+        select <include refid="selectPublicColumns"/> <!-- 引用公共列 -->
+        from shop_label_printer p
+        left join shop s on s.id = p.shop_id <!-- 左连接门店表取门店名 -->
+        where p.del_flag = 0 <!-- 只查未删除 -->
+        <if test="shopId != null">
+            and p.shop_id = #{shopId} <!-- 按门店过滤 -->
+        </if>
+        <if test="sn != null and sn != ''">
+            and p.sn like concat('%', #{sn}, '%') <!-- SN 模糊匹配 -->
+        </if>
+        <if test="printerName != null and printerName != ''">
+            and p.printer_name like concat('%', #{printerName}, '%') <!-- 设备名模糊匹配 -->
+        </if>
+        <if test="status != null">
+            and p.status = #{status} <!-- 按状态过滤 -->
+        </if>
+        order by p.id desc <!-- 按主键降序，最新记录在前 -->
+    </select>
+
+    <select id="selectShopLabelPrinterById" parameterType="Long" resultMap="ShopLabelPrinterResult"> <!-- 按主键查询（不含密钥） -->
+        select <include refid="selectPublicColumns"/> <!-- 引用公共列 -->
+        from shop_label_printer p
+        left join shop s on s.id = p.shop_id <!-- 左连接门店表取门店名 -->
+        where p.id = #{id} and p.del_flag = 0 <!-- 指定主键且未删除 -->
+    </select>
+
+    <select id="selectShopLabelPrinterByIdWithKey" parameterType="Long" resultMap="ShopLabelPrinterResult"> <!-- 按主键查询（含密钥，修改/删除前用） -->
+        select <include refid="selectPublicColumns"/>, p.printer_key <!-- 公共列额外带上密钥 -->
+        from shop_label_printer p
+        left join shop s on s.id = p.shop_id <!-- 左连接门店表取门店名 -->
+        where p.id = #{id} and p.del_flag = 0 <!-- 指定主键且未删除 -->
+    </select>
+
+    <select id="selectActiveBySn" parameterType="String" resultMap="ShopLabelPrinterResult"> <!-- 按 SN 查询未删除打印机（唯一性校验） -->
+        select <include refid="selectPublicColumns"/> <!-- 引用公共列 -->
+        from shop_label_printer p
+        left join shop s on s.id = p.shop_id <!-- 左连接门店表取门店名 -->
+        where p.sn = #{sn} and p.del_flag = 0 <!-- 指定 SN 且未删除 -->
+        limit 1 <!-- 最多返回一条 -->
+    </select>
+
+    <insert id="insertShopLabelPrinter" parameterType="ShopLabelPrinter" useGeneratedKeys="true" keyProperty="id"> <!-- 新增打印机，回写自增主键 -->
+        insert into shop_label_printer(
+            shop_id, sn, printer_key, printer_name, print_width, print_height,
+            status, feie_status, last_status_time, del_flag, remark, create_time
+        ) values (
+            #{shopId}, #{sn}, #{printerKey}, #{printerName}, #{printWidth}, #{printHeight},
+            #{status}, #{feieStatus}, #{lastStatusTime}, #{delFlag}, #{remark}, sysdate()
+        )
+    </insert>
+
+    <update id="updateShopLabelPrinter" parameterType="ShopLabelPrinter"> <!-- 按主键更新打印机（含 printer_key；Service 在未提交新密钥时回填旧密钥，故此处始终写入有效值） -->
+        update shop_label_printer
+        <set>
+            shop_id = #{shopId},
+            sn = #{sn},
+            printer_key = #{printerKey},
+            printer_name = #{printerName},
+            print_width = #{printWidth},
+            print_height = #{printHeight},
+            status = #{status},
+            remark = #{remark},
+            <if test="feieStatus != null">feie_status = #{feieStatus},</if> <!-- 仅在飞鹅状态非空时更新 -->
+            <if test="lastStatusTime != null">last_status_time = #{lastStatusTime},</if> <!-- 仅在状态时间非空时更新 -->
+            update_time = sysdate()
+        </set>
+        where id = #{id} and del_flag = 0 <!-- 仅更新未删除记录 -->
+    </update>
+
+    <update id="updateFeieStatus"> <!-- 仅更新飞鹅状态字段（状态查询后回写） -->
+        update shop_label_printer
+        set feie_status = #{feieStatus}, last_status_time = sysdate(), update_time = sysdate()
+        where id = #{id} and del_flag = 0 <!-- 仅更新未删除记录 -->
+    </update>
+
+    <update id="deleteShopLabelPrinterById" parameterType="Long"> <!-- 逻辑删除：del_flag 置 1，保留历史记录 -->
+        update shop_label_printer
+        set del_flag = 1, update_time = sysdate()
+        where id = #{id} and del_flag = 0 <!-- 仅删除未删除记录，避免重复操作 -->
+    </update>
+</mapper>
