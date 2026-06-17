@@ -109,6 +109,7 @@ public class PaymentTransactionService
                 throw new ServiceException("订单支付数据异常，请联系管理员");
             }
             CUserBalance current = cUserBalanceMapper.selectByUserId(userId);
+            scheduleLabelPrintAfterCommit(orderId);
             return new PayResponse(locked.getOrderNo(), locked.getPickupDisplay(), current == null ? 0 : current.getBalance());
         }
         // 【状态前置校验】只有「待支付」订单才能支付（order_status=0 且 pay_status=0）。

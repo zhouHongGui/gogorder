@@ -4,6 +4,7 @@ import java.time.format.DateTimeFormatter; // 引入日期格式化器，用于�
 import java.util.ArrayList; // 引入动态数组，用于收集换行后的文本行
 import java.util.Collections; // 引入集合工具，用于返回空列表
 import java.util.List; // 引入集合类型
+import java.util.UUID; // 引入 UUID，用作 Redis 处理中锁 owner
 import java.util.concurrent.TimeUnit; // 引入时间单位，用于设置 Redis 键过期
 import org.slf4j.Logger; // 引入日志接口
 import org.slf4j.LoggerFactory; // 引入日志工厂
@@ -33,8 +34,9 @@ public class OrderLabelPrintServiceImpl implements IOrderLabelPrintService // �
     private static final int LABEL_MARGIN = 40; // 标签内容起始 Y 坐标（点），约等于顶部留白
     private static final int LABEL_X = 10; // 标签文本固定 X 坐标（点），即左边距
     private static final int LABEL_SECTION_GAP = 18; // 标签各区块之间的纵向间距（点）
-    private static final int LABEL_PRINT_ONCE_TTL_DAYS = 30; // 「成功标记」过期天数：仅当至少一张标签发送成功后才写入，期间内不重复打印
+    private static final int LABEL_PRINT_ONCE_TTL_DAYS = 30; // 「整单成功标记」过期天数：全部标签任务成功后才写入，期间内自动打印不重复执行
     private static final String LABEL_PRINT_ONCE_KEY_PREFIX = "order:label:printed:"; // 「成功标记」键前缀，后接订单 ID
+    private static final String LABEL_PRINT_ITEM_KEY_PREFIX = "order:label:printed:item:"; // 「单项成功标记」键前缀，后接订单/打印机/明细 ID
     private static final int LABEL_PRINT_LOCK_TTL_MINUTES = 5; // 「处理中锁」过期分钟数：仅防止同一订单并发重复执行，进程崩溃后自动过期
     private static final String LABEL_PRINT_LOCK_KEY_PREFIX = "order:label:printing:"; // 「处理中锁」键前缀，后接订单 ID
 
@@ -72,16 +74,17 @@ public class OrderLabelPrintServiceImpl implements IOrderLabelPrintService // �
         });
     }
 
-    private void printPaidOrder(Long orderId) // 实际打印逻辑：抢处理中锁 → 校验是否已成功打印 → 校验订单 → 遍历打印 → 成功才写标记
+    private void printPaidOrder(Long orderId) // 实际打印逻辑：抢锁 → 校验订单 → 遍历打印 → 成功才写标记
     {
-        if (!acquireProcessingLock(orderId)) // 抢「处理中锁」失败，说明另一线程正在处理同一订单
+        String lockOwner = acquireProcessingLock(orderId); // 抢「处理中锁」，返回 owner 用于安全释放
+        if (lockOwner == null) // 抢锁失败，说明另一线程正在处理同一订单
         {
-            log.info("支付后打印跳过：订单正在打印中 orderId={}", orderId); // 记录跳过原因
+            log.info("支付后打印跳过：订单正在打印中 orderId={}", orderId); // 自动打印只记录跳过原因
             return; // 直接返回，避免并发重复打印
         }
         try
         {
-            if (isAlreadyPrinted(orderId)) // 已有「成功标记」，说明该订单此前已成功打印过
+            if (isAlreadyPrinted(orderId)) // 自动打印已有「整单成功标记」，说明此前已成功打印过
             {
                 log.info("支付后打印跳过：订单标签已打印成功 orderId={}", orderId); // 记录跳过原因
                 return; // 直接返回，避免重复打印
@@ -89,71 +92,92 @@ public class OrderLabelPrintServiceImpl implements IOrderLabelPrintService // �
             BizOrder order = bizOrderMapper.selectById(orderId); // 查询订单
             if (order == null) // 订单不存在（事务尚未可见或已被清理）
             {
-                log.warn("支付后打印跳过：订单不存在 orderId={}", orderId); // 记录警告；未写成功标记，后续再次触发可重试
-                return; // 跳过
+                log.warn("支付后打印跳过：订单不存在 orderId={}", orderId);
+                return;
             }
             if (!Integer.valueOf(PayStatusEnum.PAY_SUCCESS.getCode()).equals(order.getPayStatus())) // 订单未支付成功
             {
-                log.warn("支付后打印跳过：订单未支付成功 orderId={} payStatus={}", orderId, order.getPayStatus()); // 记录警告（不打印敏感字段）；未写成功标记，可重试
-                return; // 跳过，只对支付成功的订单打印
+                log.warn("支付后打印跳过：订单未支付成功 orderId={} payStatus={}", orderId, order.getPayStatus());
+                return;
             }
             List<ShopLabelPrinter> printers = shopLabelPrinterMapper.selectEnabledByShopId(order.getShopId()); // 查询门店启用的打印机
             if (printers.isEmpty()) // 门店未配置启用的打印机
             {
-                log.info("支付后打印跳过：门店未配置启用中的标签打印机 orderId={} shopId={}", orderId, order.getShopId()); // 记录跳过原因；未写成功标记，可重试
-                return; // 静默跳过（非异常情况）
+                log.info("支付后打印跳过：门店未配置启用中的标签打印机 orderId={} shopId={}", orderId, order.getShopId());
+                return;
             }
             List<BizOrderItem> items = bizOrderItemMapper.selectByOrderId(orderId); // 查询订单明细
             if (items.isEmpty()) // 订单没有明细
             {
-                log.warn("支付后打印跳过：订单明细为空 orderId={}", orderId); // 记录警告；未写成功标记，可重试
-                return; // 跳过
+                log.warn("支付后打印跳过：订单明细为空 orderId={}", orderId);
+                return;
             }
 
-            int successCount = 0; // 成功发送的标签份数计数
+            int totalCount = printers.size() * items.size(); // 任务数按「打印机 x 商品明细」计算，数量份数由 times 传给飞鹅
+            int successCount = 0; // 成功发送或已成功标记覆盖的任务数
+            int failedCount = 0; // 发送失败任务数
+            int skippedCount = 0; // 因单项幂等标记跳过的任务数
             for (ShopLabelPrinter printer : printers) // 遍历门店的每台启用打印机
             {
                 for (BizOrderItem item : items) // 遍历订单的每个商品明细
                 {
                     int times = Math.max(StringUtils.nvl(item.getQuantity(), 1), 1); // 该商品的打印份数 = 购买数量，至少 1
+                    String itemKey = labelPrintItemKey(orderId, printer.getId(), item.getId()); // 单项幂等键：订单+打印机+明细
+                    if (isItemPrinted(itemKey)) // 自动打印遇到单项成功标记时跳过该任务
+                    {
+                        successCount++;
+                        skippedCount++;
+                        log.info("支付后打印单项跳过：已成功打印过 orderId={} printerId={} itemId={}",
+                                orderId, printer.getId(), item.getId());
+                        continue;
+                    }
                     try
                     {
                         feiePrintService.printLabel(printer.getSn(), buildLabelContent(printer, order, item), times); // 按数量打印标签
                         successCount++; // 累加成功计数
-                        log.info("支付后打印成功 orderId={} printerId={} sn={} product={} times={}", // 记录成功日志
-                                orderId, printer.getId(), printer.getSn(), item.getProductName(), times);
+                        markItemPrinted(itemKey); // 写入单项成功标记，后续自动重试不会重复打印已成功项
+                        log.info("支付后打印成功 orderId={} printerId={} sn={} itemId={} product={} times={}", // 记录成功日志
+                                orderId, printer.getId(), printer.getSn(), item.getId(), item.getProductName(), times);
                     }
                     catch (Exception e) // 单项打印失败
                     {
-                        log.warn("支付后打印单项失败 orderId={} printerId={} sn={} product={} times={}", // 记录失败日志，不中断后续项
-                                orderId, printer.getId(), printer.getSn(), item.getProductName(), times, e);
+                        failedCount++; // 累加失败计数
+                        log.warn("支付后打印单项失败 orderId={} printerId={} sn={} itemId={} product={} times={}", // 记录失败日志，不中断后续项
+                                orderId, printer.getId(), printer.getSn(), item.getId(), item.getProductName(), times, e);
                     }
                 }
             }
-            if (successCount > 0) // 至少一张标签发送成功
+            if (totalCount > 0 && failedCount == 0 && successCount == totalCount) // 全部任务均成功或已有单项成功标记覆盖
             {
-                markPrinted(orderId); // 写入「成功标记」，后续重复触发将跳过
+                markPrinted(orderId); // 写入「整单成功标记」，后续自动重复触发将跳过
             }
-            else // 全部失败
+            else if (successCount == 0) // 全部失败
             {
-                log.warn("支付后打印全部失败，未写入成功标记，后续再次触发可重试 orderId={}", orderId); // 不写标记以便重试（当前无定时重试任务）
+                log.warn("支付后打印全部失败，未写入整单成功标记，后续再次触发可重试 orderId={}", orderId); // 不写整单标记以便重试
+            }
+            else // 部分成功
+            {
+                log.warn("支付后打印部分成功，未写入整单成功标记 orderId={} success={} failed={} skipped={}",
+                        orderId, successCount, failedCount, skippedCount); // 保留未成功项的重试空间
             }
         }
         finally
         {
-            releaseProcessingLock(orderId); // 无论成功失败都释放「处理中锁」，便于后续重试或并发判断
+            releaseProcessingLock(orderId, lockOwner); // owner 校验释放「处理中锁」，避免误删其他线程的新锁
         }
     }
 
-    private boolean acquireProcessingLock(Long orderId) // 抢占「处理中锁」：setIfAbsent 成功表示获得锁，用于阻止并发重复执行
+    private String acquireProcessingLock(Long orderId) // 抢占「处理中锁」：setIfAbsent 成功表示获得锁，用于阻止并发重复执行
     {
-        return redisCache.setCacheObjectIfAbsent(LABEL_PRINT_LOCK_KEY_PREFIX + orderId, "1", // 键为前缀+订单ID，值无意义
+        String owner = UUID.randomUUID().toString(); // 每次抢锁生成唯一 owner，释放时必须匹配
+        boolean locked = redisCache.setCacheObjectIfAbsent(LABEL_PRINT_LOCK_KEY_PREFIX + orderId, owner,
                 LABEL_PRINT_LOCK_TTL_MINUTES, TimeUnit.MINUTES); // 短期过期，进程崩溃后也会自动释放
+        return locked ? owner : null;
     }
 
-    private void releaseProcessingLock(Long orderId) // 释放「处理中锁」，使后续触发可立即重试
+    private void releaseProcessingLock(Long orderId, String lockOwner) // 释放「处理中锁」，使后续触发可立即重试
     {
-        redisCache.deleteObject(LABEL_PRINT_LOCK_KEY_PREFIX + orderId); // 删除锁键；键已过期时删除返回 false，属正常
+        redisCache.releaseLock(LABEL_PRINT_LOCK_KEY_PREFIX + orderId, lockOwner); // owner 校验释放，防止误删别人持有的新锁
     }
 
     private boolean isAlreadyPrinted(Long orderId) // 判断订单是否已有「成功标记」（即此前已成功打印过）
@@ -165,6 +189,21 @@ public class OrderLabelPrintServiceImpl implements IOrderLabelPrintService // �
     {
         redisCache.setCacheObjectIfAbsent(LABEL_PRINT_ONCE_KEY_PREFIX + orderId, "1", // 键为前缀+订单ID，值无意义
                 LABEL_PRINT_ONCE_TTL_DAYS, TimeUnit.DAYS); // 过期 30 天
+    }
+
+    private boolean isItemPrinted(String itemKey) // 判断某个「打印机+订单明细」标签是否已成功打印过
+    {
+        return Boolean.TRUE.equals(redisCache.hasKey(itemKey)); // 防御 hasKey 偶发返回 null
+    }
+
+    private void markItemPrinted(String itemKey) // 写入单项成功标记，避免自动重试时重复打印已成功项
+    {
+        redisCache.setCacheObjectIfAbsent(itemKey, "1", LABEL_PRINT_ONCE_TTL_DAYS, TimeUnit.DAYS); // 与整单标记保持相同保留期
+    }
+
+    private String labelPrintItemKey(Long orderId, Long printerId, Long itemId) // 构造单项幂等键
+    {
+        return LABEL_PRINT_ITEM_KEY_PREFIX + orderId + ":" + printerId + ":" + itemId; // 订单 + 打印机 + 明细 唯一定位一张标签任务
     }
 
     private String buildLabelContent(ShopLabelPrinter printer, BizOrder order, BizOrderItem item) // 构造单个商品的标签内容
