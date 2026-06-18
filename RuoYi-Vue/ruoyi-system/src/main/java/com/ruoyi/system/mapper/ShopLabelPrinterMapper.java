@@ -14,6 +14,8 @@ public interface ShopLabelPrinterMapper // 门店标签打印机的 MyBatis 数�
 
     ShopLabelPrinter selectShopLabelPrinterByIdWithKey(Long id); // 按主键查询打印机（含密钥字段，修改/删除前需要 SN 与密钥）
 
+    ShopLabelPrinter selectShopLabelPrinterByIdWithKeyForUpdate(Long id); // 删除前加行锁读取，串行化同一设备的并发删除
+
     ShopLabelPrinter selectActiveBySn(String sn); // 按打印机编号 SN 查询未删除的打印机（用于唯一性校验，limit 1）
 
     int insertShopLabelPrinter(ShopLabelPrinter printer); // 新增打印机记录，回写自增主键 id

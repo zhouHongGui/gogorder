@@ -154,6 +154,7 @@ UPDATE sys_menu SET menu_name = '门店商品修改' WHERE menu_id = 2025;
 UPDATE sys_menu SET menu_name = '库存调整' WHERE menu_id = 2026;
 UPDATE sys_menu SET menu_name = '门店商品移除' WHERE menu_id = 2027;
 
+-- 门店设备及标签打印机菜单（唯一维护入口，已合并原 printer_menu_patch）
 INSERT INTO sys_menu
 SELECT 2030, '门店设备', 2000, 3, 'device', NULL, '', '', 1, 0, 'M', '0', '0',
        '', 'monitor', 'admin', sysdate(), '', NULL, '门店设备管理目录'

@@ -328,8 +328,11 @@ public class OrderLabelPrintServiceImpl implements IOrderLabelPrintService // �
 
         private LabelBuilder(Integer printWidth, Integer printHeight) // 构造器：初始化标签方向与底部坐标
         {
-            content.append("<DIRECTION>1</DIRECTION>"); // 设置出纸方向（1 为默认正向）
-            bottomY = mmToDots(printHeight) - 36; // 底部行 Y = 总高度 - 36 点（留底部边距）
+            int width = StringUtils.nvl(printWidth, 40);
+            int height = StringUtils.nvl(printHeight, 50);
+            content.append("<DIRECTION>1</DIRECTION>") // 设置出纸方向（1 为默认正向）
+                    .append("<SIZE>").append(width).append(",").append(height).append("</SIZE>"); // 按设备配置设置标签纸尺寸
+            bottomY = mmToDots(height) - 36; // 底部行 Y = 总高度 - 36 点（留底部边距）
             contentMaxY = bottomY - 18; // 内容区上界比底部行再往上 18 点，避免与底部行重叠
         }
 

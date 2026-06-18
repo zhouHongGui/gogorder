@@ -1,6 +1,7 @@
 package com.ruoyi.system.domain; // 门店标签打印机实体所在包
 
 import java.time.LocalDateTime; // 引入日期时间类型，用于记录最后状态查询时间
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.ruoyi.common.core.domain.BaseEntity; // 引入若依基础实体，提供 remark/createTime/updateTime/createBy/updateBy 等公共字段
 
 public class ShopLabelPrinter extends BaseEntity // 门店标签打印机的领域实体，对应表 shop_label_printer
@@ -11,7 +12,8 @@ public class ShopLabelPrinter extends BaseEntity // 门店标签打印机的领�
     private Long shopId; // 绑定的门店 ID
     private String shopName; // 门店名称（联表 shop 查询得到，非持久化字段，用于列表展示）
     private String sn; // 飞鹅打印机编号 SN（设备唯一标识，6-32 位数字）
-    private String printerKey; // 飞鹅打印机设备密钥（仅后端保存，列表不回显，绑定/换设备时需要）
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
+    private String printerKey; // 飞鹅打印机设备密钥（仅允许请求写入，任何响应均不序列化）
     private String printerName; // 设备备注名（如"南宁店标签机"），可空
     private Integer printWidth; // 标签纸宽度，单位毫米（mm），范围 20-120
     private Integer printHeight; // 标签纸高度，单位毫米（mm），范围 10-120

@@ -69,6 +69,14 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         where p.id = #{id} and p.del_flag = 0 <!-- 指定主键且未删除 -->
     </select>
 
+    <select id="selectShopLabelPrinterByIdWithKeyForUpdate" parameterType="Long" resultMap="ShopLabelPrinterResult"> <!-- 删除前锁定当前有效记录，避免并发重复解绑与错误补偿 -->
+        select <include refid="selectPublicColumns"/>, p.printer_key
+        from shop_label_printer p
+        left join shop s on s.id = p.shop_id
+        where p.id = #{id} and p.del_flag = 0
+        for update
+    </select>
+
     <select id="selectActiveBySn" parameterType="String" resultMap="ShopLabelPrinterResult"> <!-- 按 SN 查询未删除打印机（唯一性校验） -->
         select <include refid="selectPublicColumns"/> <!-- 引用公共列 -->
         from shop_label_printer p

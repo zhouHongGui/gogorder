@@ -110,7 +110,7 @@
                 show-password
                 autocomplete="new-password"
                 maxlength="128"
-                :placeholder="form.id ? '不修改密钥请留空' : '请输入飞鹅打印机密钥'"
+                :placeholder="form.id ? (isSnChanged ? '修改 SN 后必须填写新设备密钥' : '不修改密钥请留空') : '请输入飞鹅打印机密钥'"
               />
             </el-form-item>
           </el-col>
@@ -180,6 +180,9 @@ const queryParams = reactive({
 })
 
 const form = ref({}) // 新增/修改表单数据
+const originalSn = ref("") // 编辑时的原设备编号，用于判断是否更换了物理设备
+const isSnChanged = computed(() => Boolean(form.value.id)
+  && String(form.value.sn || "").trim() !== originalSn.value)
 
 // 启用状态下拉选项
 const statusOptions = [
@@ -187,10 +190,10 @@ const statusOptions = [
   { label: "停用", value: 0 }
 ]
 
-// 设备密钥自定义校验：仅新增时必填，修改时留空表示不修改密钥
+// 设备密钥自定义校验：新增或更换 SN 时必填，同一 SN 编辑时留空表示不修改密钥
 const validatePrinterKey = (rule, value, callback) => {
-  if (!form.value.id && !value) { // 新增（无 id）且未填密钥
-    callback(new Error("新增打印机时设备密钥不能为空"))
+  if ((!form.value.id || isSnChanged.value) && !String(value || "").trim()) {
+    callback(new Error(isSnChanged.value ? "修改设备编号时必须填写新设备对应的密钥" : "新增打印机时设备密钥不能为空"))
     return
   }
   callback() // 校验通过
@@ -225,6 +228,7 @@ function loadShops() {
 
 // 重置表单为默认值（新增与修改前都会调用）
 function reset() {
+  originalSn.value = ""
   form.value = {
     id: undefined,
     shopId: undefined,
@@ -262,6 +266,7 @@ function handleAdd() {
 function handleUpdate(row) {
   reset()
   getLabelPrinter(row.id).then(response => {
+    originalSn.value = String(response.data.sn || "").trim()
     form.value = {
       ...response.data,
       printerKey: "" // 密钥不回显
