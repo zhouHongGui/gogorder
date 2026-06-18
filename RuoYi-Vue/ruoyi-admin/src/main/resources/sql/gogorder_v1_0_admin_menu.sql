@@ -153,3 +153,53 @@ UPDATE sys_menu SET menu_name = '门店商品分配' WHERE menu_id = 2024;
 UPDATE sys_menu SET menu_name = '门店商品修改' WHERE menu_id = 2025;
 UPDATE sys_menu SET menu_name = '库存调整' WHERE menu_id = 2026;
 UPDATE sys_menu SET menu_name = '门店商品移除' WHERE menu_id = 2027;
+
+-- 门店设备及标签打印机菜单（唯一维护入口，已合并原 printer_menu_patch）
+INSERT INTO sys_menu
+SELECT 2030, '门店设备', 2000, 3, 'device', NULL, '', '', 1, 0, 'M', '0', '0',
+       '', 'monitor', 'admin', sysdate(), '', NULL, '门店设备管理目录'
+WHERE NOT EXISTS (SELECT 1 FROM sys_menu WHERE menu_id = 2030);
+
+INSERT INTO sys_menu
+SELECT 2031, '标签打印机列表', 2030, 1, 'label-printer', 'admin/device/labelPrinter/index', '', '', 1, 0, 'C', '0', '0',
+       'admin:label-printer:list', 'monitor', 'admin', sysdate(), '', NULL, '门店标签打印机管理菜单'
+WHERE NOT EXISTS (SELECT 1 FROM sys_menu WHERE menu_id = 2031);
+
+INSERT INTO sys_menu
+SELECT 2032, '标签打印机查询', 2031, 1, '#', '', '', '', 1, 0, 'F', '0', '0',
+       'admin:label-printer:query', '#', 'admin', sysdate(), '', NULL, ''
+WHERE NOT EXISTS (SELECT 1 FROM sys_menu WHERE menu_id = 2032);
+
+INSERT INTO sys_menu
+SELECT 2033, '标签打印机新增', 2031, 2, '#', '', '', '', 1, 0, 'F', '0', '0',
+       'admin:label-printer:add', '#', 'admin', sysdate(), '', NULL, ''
+WHERE NOT EXISTS (SELECT 1 FROM sys_menu WHERE menu_id = 2033);
+
+INSERT INTO sys_menu
+SELECT 2034, '标签打印机修改', 2031, 3, '#', '', '', '', 1, 0, 'F', '0', '0',
+       'admin:label-printer:edit', '#', 'admin', sysdate(), '', NULL, ''
+WHERE NOT EXISTS (SELECT 1 FROM sys_menu WHERE menu_id = 2034);
+
+INSERT INTO sys_menu
+SELECT 2035, '标签打印机删除', 2031, 4, '#', '', '', '', 1, 0, 'F', '0', '0',
+       'admin:label-printer:remove', '#', 'admin', sysdate(), '', NULL, ''
+WHERE NOT EXISTS (SELECT 1 FROM sys_menu WHERE menu_id = 2035);
+
+INSERT INTO sys_menu
+SELECT 2036, '查询打印机状态', 2031, 5, '#', '', '', '', 1, 0, 'F', '0', '0',
+       'admin:label-printer:status', '#', 'admin', sysdate(), '', NULL, ''
+WHERE NOT EXISTS (SELECT 1 FROM sys_menu WHERE menu_id = 2036);
+
+INSERT INTO sys_menu
+SELECT 2037, '标签测试打印', 2031, 6, '#', '', '', '', 1, 0, 'F', '0', '0',
+       'admin:label-printer:test', '#', 'admin', sysdate(), '', NULL, ''
+WHERE NOT EXISTS (SELECT 1 FROM sys_menu WHERE menu_id = 2037);
+
+UPDATE sys_menu SET menu_name = '门店设备', icon = 'monitor', remark = '门店设备管理目录' WHERE menu_id = 2030;
+UPDATE sys_menu SET menu_name = '标签打印机列表', component = 'admin/device/labelPrinter/index', icon = 'monitor', perms = 'admin:label-printer:list', remark = '门店标签打印机管理菜单' WHERE menu_id = 2031;
+UPDATE sys_menu SET menu_name = '标签打印机查询', perms = 'admin:label-printer:query' WHERE menu_id = 2032;
+UPDATE sys_menu SET menu_name = '标签打印机新增', perms = 'admin:label-printer:add' WHERE menu_id = 2033;
+UPDATE sys_menu SET menu_name = '标签打印机修改', perms = 'admin:label-printer:edit' WHERE menu_id = 2034;
+UPDATE sys_menu SET menu_name = '标签打印机删除', perms = 'admin:label-printer:remove' WHERE menu_id = 2035;
+UPDATE sys_menu SET menu_name = '查询打印机状态', perms = 'admin:label-printer:status' WHERE menu_id = 2036;
+UPDATE sys_menu SET menu_name = '标签测试打印', perms = 'admin:label-printer:test' WHERE menu_id = 2037;

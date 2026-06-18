@@ -118,7 +118,7 @@ c-auth:
     app-secret: ${WECHAT_MINI_APP_SECRET:}
 
 cors:
-  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:80}
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost}
 
 # MyBatis配置
 mybatis:
@@ -161,6 +161,13 @@ amap:
   web:
     key: ${AMAP_WEB_KEY:}
     security-code: ${AMAP_SECURITY_CODE:}
+
+# 飞鹅打印配置：真实 user/uKey 只通过环境变量注入，不写入仓库
+feie:
+  config:
+    user: ${FEIE_USER:}
+    uKey: ${FEIE_UKEY:}
+    url: ${FEIE_URL:https://api.feieyun.cn/Api/Open/}
 
 # 防止XSS攻击
 xss:

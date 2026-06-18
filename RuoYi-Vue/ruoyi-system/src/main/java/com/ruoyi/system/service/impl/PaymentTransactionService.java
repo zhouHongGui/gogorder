@@ -10,6 +10,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import com.ruoyi.common.constant.HttpStatus;
 import com.ruoyi.common.config.GogorderOrderProperties;
 import com.ruoyi.common.enums.BalanceChangeTypeEnum;
@@ -27,6 +29,7 @@ import com.ruoyi.system.mapper.BalanceLedgerMapper;
 import com.ruoyi.system.mapper.BizOrderMapper;
 import com.ruoyi.system.mapper.CUserBalanceMapper;
 import com.ruoyi.system.mapper.PaymentLedgerMapper;
+import com.ruoyi.system.service.IOrderLabelPrintService;
 
 /**
  * 支付事务服务（余额支付）。
@@ -70,6 +73,7 @@ public class PaymentTransactionService
     @Autowired private CUserBalanceMapper cUserBalanceMapper;
     @Autowired private BalanceLedgerMapper balanceLedgerMapper;
     @Autowired private PaymentLedgerMapper paymentLedgerMapper;
+    @Autowired private IOrderLabelPrintService orderLabelPrintService;
     /** 订单可调阈值（支付超时分钟数等），见 {@link GogorderOrderProperties}。 */
     @Autowired private GogorderOrderProperties orderProperties;
 
@@ -105,6 +109,7 @@ public class PaymentTransactionService
                 throw new ServiceException("订单支付数据异常，请联系管理员");
             }
             CUserBalance current = cUserBalanceMapper.selectByUserId(userId);
+            scheduleLabelPrintAfterCommit(orderId);
             return new PayResponse(locked.getOrderNo(), locked.getPickupDisplay(), current == null ? 0 : current.getBalance());
         }
         // 【状态前置校验】只有「待支付」订单才能支付（order_status=0 且 pay_status=0）。
@@ -192,10 +197,28 @@ public class PaymentTransactionService
         {
             throw new ServiceException("订单状态已变更", HttpStatus.CONFLICT);
         }
+        scheduleLabelPrintAfterCommit(orderId);
         log.info("支付成功 orderId={} orderNo={} userId={} shopId={} amount={} orderType={} pickupDisplay={}",
                 orderId, locked.getOrderNo(), userId, locked.getShopId(),
                 locked.getTotalAmount(), locked.getOrderType(), pickupDisplay);
         return new PayResponse(locked.getOrderNo(), pickupDisplay, afterBalance);
+    }
+
+    private void scheduleLabelPrintAfterCommit(Long orderId)
+    {
+        if (!TransactionSynchronizationManager.isSynchronizationActive())
+        {
+            orderLabelPrintService.printPaidOrderAsync(orderId);
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization()
+        {
+            @Override
+            public void afterCommit()
+            {
+                orderLabelPrintService.printPaidOrderAsync(orderId);
+            }
+        });
     }
 
     /**

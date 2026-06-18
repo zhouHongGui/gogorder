@@ -98,7 +98,7 @@
             :class="{ selected: currentShopId === shop.id }"
             @click.stop="chooseShop(shop)"
           >
-            <text>{{ currentShopId === shop.id ? '已选' : '选择' }}</text>
+            <text>去下单</text>
           </view>
         </view>
       </view>
@@ -263,16 +263,12 @@ function clearKeyword() {
   keyword.value = ''
 }
 
-/** 选定门店：保存为当前门店，提示后返回上一页或跳首页。 */
+/** 选定门店并进入点单页；门店不支持即时单时自动切到预订单。 */
 function chooseShop(shop: Shop) {
   saveCurrentShop(shop)
   currentShopId.value = shop.id
-  uni.showToast({ title: '门店已切换', icon: 'success' })
-  setTimeout(() => {
-    const pages = getCurrentPages()
-    if (pages.length > 1) uni.navigateBack()
-    else uni.switchTab({ url: '/pages/index/index' })
-  }, 350)
+  const orderType = shop.instantAvailable ? 'NORMAL' : 'PREORDER'
+  uni.redirectTo({ url: `/pages/menu/index?orderType=${orderType}` })
 }
 
 function openShopDetail(shop: Shop) {

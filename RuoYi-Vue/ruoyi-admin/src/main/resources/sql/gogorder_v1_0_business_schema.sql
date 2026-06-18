@@ -131,6 +131,27 @@ CREATE TABLE IF NOT EXISTS `staff_shop` (
   KEY `idx_shop_id` (`shop_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='员工-门店关联';
 
+CREATE TABLE IF NOT EXISTS `shop_label_printer` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `shop_id` BIGINT NOT NULL COMMENT '绑定门店ID',
+  `sn` VARCHAR(64) NOT NULL COMMENT '飞鹅打印机编号',
+  `printer_key` VARCHAR(128) NOT NULL COMMENT '飞鹅打印机密钥，仅后端保存',
+  `printer_name` VARCHAR(100) DEFAULT '' COMMENT '设备备注名',
+  `print_width` INT NOT NULL DEFAULT 40 COMMENT '标签宽度，毫米',
+  `print_height` INT NOT NULL DEFAULT 50 COMMENT '标签高度，毫米',
+  `status` TINYINT NOT NULL DEFAULT 1 COMMENT '0停用 1启用',
+  `feie_status` VARCHAR(100) DEFAULT '' COMMENT '飞鹅最后返回状态',
+  `last_status_time` DATETIME DEFAULT NULL COMMENT '最后查询状态时间',
+  `remark` VARCHAR(200) DEFAULT '',
+  `del_flag` TINYINT NOT NULL DEFAULT 0 COMMENT '0正常 1已删除',
+  `active_sn` VARCHAR(64) GENERATED ALWAYS AS (CASE WHEN `del_flag` = 0 THEN `sn` ELSE NULL END) STORED COMMENT '用于约束未删除设备SN唯一',
+  `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_active_sn` (`active_sn`),
+  KEY `idx_shop_status` (`shop_id`, `status`, `del_flag`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='门店标签打印机';
+
 CREATE TABLE IF NOT EXISTS `category` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `name` VARCHAR(50) NOT NULL,
