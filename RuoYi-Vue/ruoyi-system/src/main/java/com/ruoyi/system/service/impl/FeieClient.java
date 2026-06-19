@@ -52,7 +52,10 @@ public class FeieClient // 飞鹅云打印开放平台的底层 HTTP 客户端�
         }
         try
         {
-            return JSON.parseObject(response, FeieResponse.class); // 把响应 JSON 解析为 FeieResponse 对象
+            FeieResponse parsed = JSON.parseObject(response, FeieResponse.class); // 把响应 JSON 解析为 FeieResponse 对象
+            log.debug("飞鹅接口响应 apiName={} ret={} msg={} dataPresent={} serverExecutedTime={}", apiName,
+                    parsed.getRet(), parsed.getMsg(), parsed.getData() != null, parsed.getServerExecutedTime());
+            return parsed;
         }
         catch (Exception e) // 解析失败（返回非 JSON 或字段不符）
         {

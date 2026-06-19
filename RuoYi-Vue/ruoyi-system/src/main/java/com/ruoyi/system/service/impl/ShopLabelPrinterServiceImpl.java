@@ -159,6 +159,8 @@ public class ShopLabelPrinterServiceImpl implements IShopLabelPrinterService // 
         FeieResponse response = feiePrintService.queryPrinterStatus(printer.getSn()); // 调用飞鹅状态查询
         String status = response.getData() == null ? response.getMsg() : String.valueOf(response.getData()); // 优先取 data，没有则取 msg
         printerMapper.updateFeieStatus(id, status); // 回写状态到本地
+        log.info("飞鹅打印机状态查询完成 printerId={} shopId={} sn={} status={}",
+                id, printer.getShopId(), printer.getSn(), status);
         return status; // 返回状态文本给前端展示
     }
 
@@ -172,13 +174,18 @@ public class ShopLabelPrinterServiceImpl implements IShopLabelPrinterService // 
         }
         Integer width = StringUtils.nvl(printer.getPrintWidth(), 40); // 标签宽度，缺省 40mm
         Integer height = StringUtils.nvl(printer.getPrintHeight(), 50); // 标签高度，缺省 50mm
+        int qrX = 10; // 测试二维码与实际标签一致，固定在左下角
+        int qrY = Math.max(24, height * 8 - 124); // 二维码贴近底部并为底部留白
         String content = "<DIRECTION>1</DIRECTION><SIZE>" + width + "," + height + "</SIZE>" // 标签方向与纸张尺寸
                 + "<TEXT x=\"10\" y=\"40\">GOGORDER 标签测试</TEXT>" // 标题文本
                 + "<TEXT x=\"10\" y=\"72\">纸张 " + width + "x" + height + "mm</TEXT>" // 显示纸张尺寸
                 + "<TEXT x=\"10\" y=\"104\">" + escapeXml(displayName(printer)) + "</TEXT>" // 显示设备名（XML 转义）
                 + "<TEXT x=\"10\" y=\"136\">SN:" + escapeXml(printer.getSn()) + "</TEXT>" // 显示 SN（XML 转义）
-                + "<TEXT x=\"10\" y=\"168\">请检查方向与边距</TEXT>"; // 提示文本
+                + "<TEXT x=\"10\" y=\"168\">请检查方向、边距及二维码</TEXT>" // 提示文本
+                + "<QR x=\"" + qrX + "\" y=\"" + qrY + "\" e=\"L\" w=\"3\">GOGORDER-QR-TEST</QR>"; // 小尺寸测试二维码
         FeieResponse response = feiePrintService.printLabel(printer.getSn(), content, 1); // 发送 1 份测试标签
+        log.info("标签测试打印任务已提交 printerId={} shopId={} sn={} printSize={}x{}mm feieOrderId={} feieMsg={}",
+                id, printer.getShopId(), printer.getSn(), width, height, response.getData(), response.getMsg());
         return response.getData() == null ? response.getMsg() : String.valueOf(response.getData()); // 返回飞鹅处理结果
     }
 

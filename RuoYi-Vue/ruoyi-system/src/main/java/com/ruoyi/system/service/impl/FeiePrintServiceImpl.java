@@ -1,6 +1,8 @@
 package com.ruoyi.system.service.impl; // 飞鹅打印服务实现所在包
 
 import java.util.Map; // 引入 Map，用于组装各接口的业务参数
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service; // 引入 Service 注解，声明为业务 Bean
 import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONArray;
@@ -15,6 +17,7 @@ import com.ruoyi.system.service.IFeiePrintService; // 引入飞鹅打印服务�
 @Service // 声明为业务 Bean，实现 IFeiePrintService
 public class FeiePrintServiceImpl implements IFeiePrintService // 飞鹅打印服务实现：在 FeieClient 基础上封装各业务接口和错误处理
 {
+    private static final Logger log = LoggerFactory.getLogger(FeiePrintServiceImpl.class);
     private final FeieClient feieClient; // 飞鹅底层 HTTP 客户端
 
     public FeiePrintServiceImpl(FeieClient feieClient) // 构造器注入飞鹅客户端
@@ -81,11 +84,20 @@ public class FeiePrintServiceImpl implements IFeiePrintService // 飞鹅打印�
     @Override
     public FeieResponse printLabel(String sn, String content, int times) // 发送标签打印任务
     {
+        if (StringUtils.isBlank(sn) || StringUtils.isBlank(content) || times < 1)
+        {
+            throw new ServiceException("飞鹅标签打印参数不完整");
+        }
+        log.debug("准备提交飞鹅标签任务 sn={} times={} contentLength={}", sn, times, content.length());
         FeieResponse response = feieClient.post("Open_printLabelMsg", Map.of( // 调用标签打印接口
                 "sn", sn, // 目标打印机 SN
                 "content", content, // 标签内容（飞鹅 TSPL/标签指令 XML）
                 "times", String.valueOf(times))); // 打印份数，飞鹅要求字符串
-        ensureSuccess(response, "飞鹅标签测试打印失败"); // 校验成功，否则抛异常
+        ensureSuccess(response, "飞鹅标签打印任务提交失败"); // 校验云端是否受理；实际出纸状态需用打印任务 ID 另行查询
+        if (response.getData() == null || StringUtils.isBlank(String.valueOf(response.getData())))
+        {
+            log.warn("飞鹅标签任务已受理但未返回任务ID sn={} times={} msg={}", sn, times, response.getMsg());
+        }
         return response; // 返回响应
     }
 
