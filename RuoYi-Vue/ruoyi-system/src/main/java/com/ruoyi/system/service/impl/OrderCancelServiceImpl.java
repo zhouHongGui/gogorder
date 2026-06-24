@@ -31,6 +31,7 @@ import com.ruoyi.system.mapper.CUserBalanceMapper;
 import com.ruoyi.system.mapper.RefundLedgerMapper;
 import com.ruoyi.system.service.IOrderCancelService;
 import com.ruoyi.system.service.IProductCenterService;
+import com.ruoyi.system.service.IStaffShopService;
 
 /**
  * 订单取消与退款服务。
@@ -60,6 +61,7 @@ import com.ruoyi.system.service.IProductCenterService;
 public class OrderCancelServiceImpl implements IOrderCancelService
 {
     private static final Logger log = LoggerFactory.getLogger(OrderCancelServiceImpl.class);
+    private static final int MAX_CANCEL_REASON_LENGTH = 200;
 
     @Autowired private BizOrderMapper bizOrderMapper;
     @Autowired private BizOrderItemMapper bizOrderItemMapper;
@@ -67,6 +69,7 @@ public class OrderCancelServiceImpl implements IOrderCancelService
     @Autowired private CUserBalanceMapper cUserBalanceMapper;
     @Autowired private BalanceLedgerMapper balanceLedgerMapper;
     @Autowired private RefundLedgerMapper refundLedgerMapper;
+    @Autowired private IStaffShopService staffShopService;
 
     /**
      * 用户主动取消「未支付」订单。
@@ -133,19 +136,41 @@ public class OrderCancelServiceImpl implements IOrderCancelService
      * 更新订单状态为已取消+已退款 → 还库存。
      *
      * @param orderId      订单 ID
-     * @param cancelReason 取消原因（写入订单与流水备注）
-     * @param operatorId   操作人 ID（记录到余额流水便于追溯）
-     * @throws ServiceException 订单不存在、状态不允许退款（制作中/已完成等）、状态已变更
+     * @param shopId       操作门店 ID（门店端=当前门店；平台端=订单所属门店），锁单后校验归属防跨店退款
+     * @param cancelReason 取消原因（必填，写入订单与流水，不可变审计）
+     * @param operatorId   操作人 shop_staff.id（记入 refund_ledger 审计；不写入 balance_ledger，避免与后台充值 sys_user.id 混用）
+     * @throws ServiceException 退款原因为空、订单不存在、不属于当前门店、状态不允许退款、状态已变更
      */
     @Override
     @Transactional(rollbackFor = Exception.class, propagation = Propagation.REQUIRES_NEW)
-    public void cancelPaidOrderWithRefund(Long orderId, String cancelReason, Long operatorId)
+    public void cancelPaidOrderWithRefund(Long orderId, Long shopId, String cancelReason, Long operatorId)
     {
+        if (orderId == null || shopId == null || operatorId == null)
+        {
+            throw new ServiceException("退款参数不能为空", HttpStatus.BAD_REQUEST);
+        }
+        String normalizedReason = cancelReason == null ? null : cancelReason.trim();
+        if (normalizedReason == null || normalizedReason.isEmpty())
+        {
+            throw new ServiceException("退款原因不能为空", HttpStatus.BAD_REQUEST);
+        }
+        if (normalizedReason.length() > MAX_CANCEL_REASON_LENGTH)
+        {
+            throw new ServiceException("退款原因不能超过200个字符", HttpStatus.BAD_REQUEST);
+        }
+        // 校验独立员工确实拥有该门店权限，所有员工角色都不可绕过 staff_shop。
+        staffShopService.requireShopAccess(operatorId, shopId);
         // 【加锁订单】悲观锁，串行化退款操作。
         BizOrder locked = bizOrderMapper.selectByIdForUpdate(orderId);
         if (locked == null)
         {
             throw new ServiceException("订单不存在", HttpStatus.NOT_FOUND);
+        }
+        // 【门店范围校验】可信 shopId 由调用方传入，锁单后校验订单归属，防跨店退款。
+        // 不依赖 Controller 单点校验——任何调用入口（门店端/平台端/MQ）都必须过这一关。
+        if (!Objects.equals(locked.getShopId(), shopId))
+        {
+            throw new ServiceException("订单不属于当前门店", HttpStatus.FORBIDDEN);
         }
         // 【退款幂等】已退款成功则直接返回，防止重复退款。
         if (Integer.valueOf(RefundStatusEnum.REFUND_SUCCESS.getCode()).equals(locked.getRefundStatus()))
@@ -182,9 +207,9 @@ public class OrderCancelServiceImpl implements IOrderCancelService
         balanceLedger.setBeforeBalance(balance.getBalance());
         balanceLedger.setAfterBalance(afterBalance);
         balanceLedger.setOrderId(orderId);
-        balanceLedger.setOperatorId(operatorId);
+        // 退款操作人（shop_staff.id）的审计由 refund_ledger 记录；balance_ledger.operator_id 保留给后台充值/调账（sys_user.id），不混入员工 ID。
         balanceLedger.setIdempotentKey(orderId + ":balance:REFUND");
-        balanceLedger.setRemark(String.valueOf(cancelReason == null ? "" : cancelReason));
+        balanceLedger.setRemark(normalizedReason);
         balanceLedgerMapper.insert(balanceLedger);
 
         // 【写退款流水】整单全额退款记录，幂等键 orderId:refund 唯一（每单仅一次）。
@@ -194,13 +219,16 @@ public class OrderCancelServiceImpl implements IOrderCancelService
         refund.setAmount(locked.getTotalAmount());
         refund.setIdempotentKey(orderId + ":refund");
         refund.setStatus(1);
+        refund.setShopId(locked.getShopId());
+        refund.setOperatorId(operatorId);
+        refund.setReason(normalizedReason);
         refundLedgerMapper.insert(refund);
 
         // 【更新订单状态：已接单+已支付+未退款 → 已取消+已退款+退款成功】条件 UPDATE。
         // rows=0 说明并发期间状态已变，抛异常回滚（含已回款、已写流水）。
         int orderRows = bizOrderMapper.updateOrderForRefund(orderId, OrderStatusEnum.CANCELLED.getCode(),
                 PayStatusEnum.PAY_REFUNDED.getCode(), RefundStatusEnum.REFUND_SUCCESS.getCode(),
-                LocalDateTime.now(), cancelReason);
+                LocalDateTime.now(), normalizedReason);
         if (orderRows == 0)
         {
             throw new ServiceException("订单状态已变更", HttpStatus.CONFLICT);

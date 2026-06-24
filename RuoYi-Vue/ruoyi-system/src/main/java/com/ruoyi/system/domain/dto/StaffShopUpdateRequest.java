@@ -3,10 +3,9 @@ package com.ruoyi.system.domain.dto;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Pattern;
 
 /**
- * 员工-门店关联修改请求（改默认门店标识与岗位）。
+ * 员工-门店授权修改请求（改默认门店标识）。
  */
 public class StaffShopUpdateRequest
 {
@@ -15,11 +14,6 @@ public class StaffShopUpdateRequest
     @Min(value = 0, message = "默认门店标识不正确")
     @Max(value = 1, message = "默认门店标识不正确")
     private Integer isDefault;
-
-    /** 门店岗位：STAFF/MANAGER/ADMIN。 */
-    @NotNull(message = "门店岗位不能为空")
-    @Pattern(regexp = "^(STAFF|MANAGER|ADMIN)$", message = "门店岗位不正确")
-    private String role;
 
     public Integer getIsDefault()
     {
@@ -31,13 +25,4 @@ public class StaffShopUpdateRequest
         this.isDefault = isDefault;
     }
 
-    public String getRole()
-    {
-        return role;
-    }
-
-    public void setRole(String role)
-    {
-        this.role = role;
-    }
 }

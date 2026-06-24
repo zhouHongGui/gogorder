@@ -20,6 +20,8 @@ public interface BizOrderMapper
             @Param("offset") int offset, @Param("limit") int limit);
     long countUserOrders(@Param("userId") Long userId,
             @Param("startTime") LocalDateTime startTime, @Param("endTime") LocalDateTime endTime);
+    Integer countQueueAheadOrders(@Param("orderId") Long orderId);
+    Integer countQueueAheadCups(@Param("orderId") Long orderId);
     int updateOrderStatus(@Param("id") Long id, @Param("orderStatus") Integer orderStatus,
             @Param("payStatus") Integer payStatus, @Param("refundStatus") Integer refundStatus,
             @Param("payTime") LocalDateTime payTime, @Param("acceptTime") LocalDateTime acceptTime,
@@ -31,6 +33,11 @@ public interface BizOrderMapper
     int cancelOrder(@Param("id") Long id, @Param("orderStatus") Integer orderStatus,
             @Param("payStatus") Integer payStatus, @Param("cancelTime") LocalDateTime cancelTime,
             @Param("cancelReason") String cancelReason);
+    List<BizOrder> selectBBoardOrders(@Param("shopId") Long shopId, @Param("limit") int limit);
+    BizOrder selectByPickupTokenForUpdate(@Param("pickupToken") String pickupToken);
+    int updateStartMake(@Param("id") Long id, @Param("shopId") Long shopId, @Param("makeStartTime") LocalDateTime makeStartTime);
+    int updateCompleteMake(@Param("id") Long id, @Param("shopId") Long shopId, @Param("completeMakeTime") LocalDateTime completeMakeTime);
+    int updateVerify(@Param("id") Long id, @Param("shopId") Long shopId, @Param("verifyTime") LocalDateTime verifyTime);
     List<BizOrder> selectPendingTimeoutOrders(@Param("deadline") LocalDateTime deadline,
             @Param("minId") Long minId, @Param("limit") int limit);
     int allocatePickupDisplay(@Param("shopId") Long shopId, @Param("pickupDate") LocalDate pickupDate);

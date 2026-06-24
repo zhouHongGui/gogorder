@@ -32,6 +32,8 @@ public class OrderDetailView
     private String pickupDisplay;          // 取餐展示号
     private String pickupToken;            // 取餐核销令牌
     private LocalDate pickupDate;          // 取餐归属日期
+    private Integer queueAheadOrders;      // 当前订单前方制作订单数
+    private Integer queueAheadCups;        // 当前订单前方制作杯数
     private LocalDateTime payTime;         // 支付时间
     private LocalDateTime acceptTime;      // 接单时间
     private LocalDateTime makeStartTime;   // 开始制作时间
@@ -86,6 +88,10 @@ public class OrderDetailView
     public void setPickupToken(String pickupToken) { this.pickupToken = pickupToken; }
     public LocalDate getPickupDate() { return pickupDate; }
     public void setPickupDate(LocalDate pickupDate) { this.pickupDate = pickupDate; }
+    public Integer getQueueAheadOrders() { return queueAheadOrders; }
+    public void setQueueAheadOrders(Integer queueAheadOrders) { this.queueAheadOrders = queueAheadOrders; }
+    public Integer getQueueAheadCups() { return queueAheadCups; }
+    public void setQueueAheadCups(Integer queueAheadCups) { this.queueAheadCups = queueAheadCups; }
     public LocalDateTime getPayTime() { return payTime; }
     public void setPayTime(LocalDateTime payTime) { this.payTime = payTime; }
     public LocalDateTime getAcceptTime() { return acceptTime; }

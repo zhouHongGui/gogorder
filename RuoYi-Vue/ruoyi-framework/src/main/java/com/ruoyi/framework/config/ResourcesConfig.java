@@ -15,6 +15,7 @@ import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import com.ruoyi.common.config.GogorderConfig;
 import com.ruoyi.common.constant.Constants;
+import com.ruoyi.framework.interceptor.BShopInterceptor;
 import com.ruoyi.framework.interceptor.RepeatSubmitInterceptor;
 
 /**
@@ -27,6 +28,9 @@ public class ResourcesConfig implements WebMvcConfigurer
 {
     @Autowired
     private RepeatSubmitInterceptor repeatSubmitInterceptor;
+
+    @Autowired
+    private BShopInterceptor bShopInterceptor;
 
     @Value("${cors.allowed-origins:http://localhost:5173,http://localhost:80}")
     private String corsAllowedOrigins;
@@ -51,6 +55,11 @@ public class ResourcesConfig implements WebMvcConfigurer
     public void addInterceptors(InterceptorRegistry registry)
     {
         registry.addInterceptor(repeatSubmitInterceptor).addPathPatterns("/**");
+        // B 端门店越权校验：/api/b/** 必须带 X-Shop-Id 且经 staff_shop 授权；
+        // 放行登录接口，以及 mine/switch（登录后首屏取门店列表/切换门店，此时无 X-Shop-Id，越权由 service 层校验）
+        registry.addInterceptor(bShopInterceptor)
+                .addPathPatterns("/api/b/**")
+                .excludePathPatterns("/api/b/auth/**", "/api/b/shop/mine", "/api/b/shop/switch");
     }
 
     /**

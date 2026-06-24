@@ -16,6 +16,7 @@ import org.springframework.security.web.authentication.logout.LogoutFilter;
 import org.springframework.web.filter.CorsFilter;
 import com.ruoyi.framework.config.properties.PermitAllUrlProperties;
 import com.ruoyi.framework.security.filter.CAuthTokenFilter;
+import com.ruoyi.framework.security.filter.BAuthTokenFilter;
 import com.ruoyi.framework.security.filter.JwtAuthenticationTokenFilter;
 import com.ruoyi.framework.security.handle.AuthenticationEntryPointImpl;
 import com.ruoyi.framework.security.handle.LogoutSuccessHandlerImpl;
@@ -49,6 +50,9 @@ public class SecurityConfig
 
     @Autowired
     private CAuthTokenFilter cAuthTokenFilter;
+
+    @Autowired
+    private BAuthTokenFilter bAuthTokenFilter;
     
     /**
      * 跨域过滤器
@@ -107,6 +111,9 @@ public class SecurityConfig
                 requests.requestMatchers("/login", "/register", "/captchaImage").permitAll()
                     // 【C 端公开路径】登录认证、门店/分类/商品浏览无需登录（需与 CAuthTokenFilter.shouldNotFilter 保持一致）
                     .requestMatchers("/api/c/auth/**", "/api/c/shop/**", "/api/c/category/**", "/api/c/product/**").permitAll()
+                    // 【B 端公开路径】员工短信/密码登录；其余 /api/b/** 由独立员工 JWT 鉴权。
+                    .requestMatchers("/api/b/auth/**").permitAll()
+                    .requestMatchers("/api/b/**").authenticated()
                     // 【C 端鉴权】其余 /api/c/** 全部要求已认证。认证由 CAuthTokenFilter 完成（解析 C 端 JWT
                     //   并构建 Authentication 注入 SecurityContext），Security 在此做兜底授权校验。
                     .requestMatchers("/api/c/**").authenticated()
@@ -120,6 +127,7 @@ public class SecurityConfig
             .logout(logout -> logout.logoutUrl("/logout").logoutSuccessHandler(logoutSuccessHandler))
             // 添加JWT filter
             .addFilterBefore(authenticationTokenFilter, UsernamePasswordAuthenticationFilter.class)
+            .addFilterBefore(bAuthTokenFilter, JwtAuthenticationTokenFilter.class)
             .addFilterBefore(cAuthTokenFilter, JwtAuthenticationTokenFilter.class)
             // 添加CORS filter
             .addFilterBefore(corsFilter, JwtAuthenticationTokenFilter.class)

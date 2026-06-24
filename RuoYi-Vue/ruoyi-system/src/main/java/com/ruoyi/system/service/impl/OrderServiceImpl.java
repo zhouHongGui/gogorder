@@ -453,6 +453,7 @@ public class OrderServiceImpl implements IOrderService
         view.setPickupDisplay(order.getPickupDisplay());
         view.setPickupToken(order.getPickupToken());
         view.setPickupDate(order.getPickupDate());
+        fillQueueAhead(view, order);
         view.setPayTime(order.getPayTime());
         view.setAcceptTime(order.getAcceptTime());
         view.setMakeStartTime(order.getMakeStartTime());
@@ -463,6 +464,27 @@ public class OrderServiceImpl implements IOrderService
         view.setCreateTime(order.getCreateTime());
         view.setItems(bizOrderItemMapper.selectByOrderId(orderId).stream().map(this::buildItemView).toList());
         return view;
+    }
+
+    /**
+     * 计算 C 端展示的「前方制作」数量。只对已支付且仍在制作队列中的订单展示，
+     * 待取餐/已完成/已取消不再计入，避免用户拿到餐后还看到排队数。
+     */
+    private void fillQueueAhead(OrderDetailView view, BizOrder order)
+    {
+        boolean inMakingQueue = Integer.valueOf(PayStatusEnum.PAY_SUCCESS.getCode()).equals(order.getPayStatus())
+                && (Integer.valueOf(OrderStatusEnum.ACCEPTED.getCode()).equals(order.getOrderStatus())
+                || Integer.valueOf(OrderStatusEnum.MAKING.getCode()).equals(order.getOrderStatus()));
+        if (!inMakingQueue)
+        {
+            view.setQueueAheadOrders(0);
+            view.setQueueAheadCups(0);
+            return;
+        }
+        Integer aheadOrders = bizOrderMapper.countQueueAheadOrders(order.getId());
+        Integer aheadCups = bizOrderMapper.countQueueAheadCups(order.getId());
+        view.setQueueAheadOrders(aheadOrders == null ? 0 : aheadOrders);
+        view.setQueueAheadCups(aheadCups == null ? 0 : aheadCups);
     }
 
     /**

@@ -74,6 +74,8 @@ export interface OrderDetail {
   pickupDisplay?: string
   pickupToken?: string
   pickupDate?: string
+  queueAheadOrders?: number
+  queueAheadCups?: number
   payTime?: string
   acceptTime?: string
   makeStartTime?: string

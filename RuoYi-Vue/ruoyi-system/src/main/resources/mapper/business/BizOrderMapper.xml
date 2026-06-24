@@ -85,6 +85,55 @@
         select count(1) from biz_order
         <include refid="userOrderFilter"/>
     </select>
+    <select id="countQueueAheadOrders" resultType="int">
+        select count(1)
+        from biz_order o
+        inner join biz_order cur on cur.id = #{orderId}
+        where o.shop_id = cur.shop_id
+          and o.pay_status = 1
+          and o.order_status in (1, 2)
+          and o.id &lt;&gt; cur.id
+          and (
+            case when o.order_type = 'PREORDER' and o.scheduled_pickup_time is not null
+                 then o.scheduled_pickup_time else o.create_time end
+            &lt;
+            case when cur.order_type = 'PREORDER' and cur.scheduled_pickup_time is not null
+                 then cur.scheduled_pickup_time else cur.create_time end
+            or (
+              case when o.order_type = 'PREORDER' and o.scheduled_pickup_time is not null
+                   then o.scheduled_pickup_time else o.create_time end
+              =
+              case when cur.order_type = 'PREORDER' and cur.scheduled_pickup_time is not null
+                   then cur.scheduled_pickup_time else cur.create_time end
+              and o.id &lt; cur.id
+            )
+          )
+    </select>
+    <select id="countQueueAheadCups" resultType="int">
+        select coalesce(sum(i.quantity), 0)
+        from biz_order o
+        inner join biz_order cur on cur.id = #{orderId}
+        inner join biz_order_item i on i.order_id = o.id
+        where o.shop_id = cur.shop_id
+          and o.pay_status = 1
+          and o.order_status in (1, 2)
+          and o.id &lt;&gt; cur.id
+          and (
+            case when o.order_type = 'PREORDER' and o.scheduled_pickup_time is not null
+                 then o.scheduled_pickup_time else o.create_time end
+            &lt;
+            case when cur.order_type = 'PREORDER' and cur.scheduled_pickup_time is not null
+                 then cur.scheduled_pickup_time else cur.create_time end
+            or (
+              case when o.order_type = 'PREORDER' and o.scheduled_pickup_time is not null
+                   then o.scheduled_pickup_time else o.create_time end
+              =
+              case when cur.order_type = 'PREORDER' and cur.scheduled_pickup_time is not null
+                   then cur.scheduled_pickup_time else cur.create_time end
+              and o.id &lt; cur.id
+            )
+          )
+    </select>
 
     <!-- 支付成功更新订单：待支付(0,0) → 已接单+已支付+无退款(1,1,0)，写入取餐号/支付/接单时间。
          条件 WHERE 保证只有待支付订单能支付；rows=0 表示并发期间状态已变，调用方据此回滚。 -->
@@ -105,6 +154,51 @@
         update biz_order set order_status = #{orderStatus}, pay_status = #{payStatus},
             cancel_time = #{cancelTime}, cancel_reason = #{cancelReason}
         where id = #{id} and order_status = 0 and pay_status = 0
+    </update>
+
+    <select id="selectBBoardOrders" resultMap="BizOrderResult">
+        <include refid="selectOrderColumns"/>
+        where shop_id = #{shopId}
+          and pay_status = 1
+          and order_status in (1, 2, 3)
+        order by
+          case when order_type = 'PREORDER' and scheduled_pickup_time is not null then scheduled_pickup_time else create_time end asc,
+          id asc
+        limit #{limit}
+    </select>
+
+    <select id="selectByPickupTokenForUpdate" resultMap="BizOrderResult">
+        <include refid="selectOrderColumns"/>
+        where pickup_token = #{pickupToken}
+        limit 1
+        for update
+    </select>
+
+    <update id="updateStartMake">
+        update biz_order
+        set order_status = 2, make_start_time = #{makeStartTime}, update_time = #{makeStartTime}
+        where id = #{id}
+          and shop_id = #{shopId}
+          and order_status = 1
+          and pay_status = 1
+    </update>
+
+    <update id="updateCompleteMake">
+        update biz_order
+        set order_status = 3, complete_make_time = #{completeMakeTime}, update_time = #{completeMakeTime}
+        where id = #{id}
+          and shop_id = #{shopId}
+          and order_status = 2
+          and pay_status = 1
+    </update>
+
+    <update id="updateVerify">
+        update biz_order
+        set order_status = 4, verify_time = #{verifyTime}, update_time = #{verifyTime}
+        where id = #{id}
+          and shop_id = #{shopId}
+          and order_status = 3
+          and pay_status = 1
     </update>
 
     <!-- 超时扫单：查待支付且超 deadline 的订单，id 游标分页（id > minId 升序），供定时任务批处理。

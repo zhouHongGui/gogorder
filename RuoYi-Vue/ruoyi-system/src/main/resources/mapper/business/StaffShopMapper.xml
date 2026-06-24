@@ -6,22 +6,30 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
 
     <resultMap type="StaffShop" id="StaffShopResult">
         <id property="id" column="id" />
-        <result property="userId" column="user_id" />
+        <result property="staffId" column="staff_id" />
         <result property="shopId" column="shop_id" />
         <result property="isDefault" column="is_default" />
-        <result property="role" column="role" />
         <result property="createTime" column="create_time" />
-        <result property="userName" column="user_name" />
-        <result property="nickName" column="nick_name" />
-        <result property="phonenumber" column="phonenumber" />
-        <result property="userStatus" column="user_status" />
+        <result property="account" column="account" />
+        <result property="nickname" column="nickname" />
+        <result property="phone" column="phone" />
+        <result property="staffStatus" column="staff_status" />
+    </resultMap>
+
+    <resultMap type="BShopContextView" id="BShopContextResult">
+        <id property="shopId" column="shop_id" />
+        <result property="shopCode" column="shop_code" />
+        <result property="shopName" column="shop_name" />
+        <result property="address" column="address" />
+        <result property="status" column="status" />
+        <result property="isDefault" column="is_default" />
     </resultMap>
 
     <sql id="selectStaffShopVo">
-        select ss.id, ss.user_id, ss.shop_id, ss.is_default, ss.role, ss.create_time,
-               u.user_name, u.nick_name, u.phonenumber, u.status as user_status
+        select ss.id, ss.staff_id, ss.shop_id, ss.is_default, ss.create_time,
+               u.account, u.nickname, u.phone, u.status as staff_status
         from staff_shop ss
-        inner join sys_user u on u.user_id = ss.user_id and u.del_flag = '0'
+        inner join shop_staff u on u.id = ss.staff_id and u.del_flag = 0
     </sql>
 
     <select id="selectStaffByShopId" parameterType="Long" resultMap="StaffShopResult">
@@ -32,31 +40,41 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
 
     <select id="selectStaffShop" resultMap="StaffShopResult">
         <include refid="selectStaffShopVo"/>
-        where ss.shop_id = #{shopId} and ss.user_id = #{userId}
+        where ss.shop_id = #{shopId} and ss.staff_id = #{staffId}
         limit 1
     </select>
 
-    <select id="countShopsByUserId" parameterType="Long" resultType="int">
-        select count(1) from staff_shop where user_id = #{userId}
+    <select id="selectShopContextsByStaffId" parameterType="Long" resultMap="BShopContextResult">
+        select s.id as shop_id, s.shop_code, s.name as shop_name,
+               concat_ws('', s.province, s.city, s.district, s.address) as address,
+               s.status, ss.is_default
+        from staff_shop ss
+        inner join shop s on s.id = ss.shop_id and s.del_flag = 0
+        where ss.staff_id = #{staffId}
+        order by ss.is_default desc, s.sort_order asc, s.id asc
+    </select>
+
+    <select id="countShopsByStaffId" parameterType="Long" resultType="int">
+        select count(1) from staff_shop where staff_id = #{staffId}
     </select>
 
     <insert id="insertStaffShop" parameterType="StaffShop" useGeneratedKeys="true" keyProperty="id">
-        insert into staff_shop (user_id, shop_id, is_default, role, create_time)
-        values (#{userId}, #{shopId}, #{isDefault}, #{role}, sysdate())
+        insert into staff_shop (staff_id, shop_id, is_default, create_time)
+        values (#{staffId}, #{shopId}, #{isDefault}, sysdate())
     </insert>
 
     <update id="updateStaffShop" parameterType="StaffShop">
         update staff_shop
-        set is_default = #{isDefault}, role = #{role}
+        set is_default = #{isDefault}
         where id = #{id}
     </update>
 
-    <update id="clearDefaultByUserId" parameterType="Long">
-        update staff_shop set is_default = 0 where user_id = #{userId} and is_default = 1
+    <update id="clearDefaultByStaffId" parameterType="Long">
+        update staff_shop set is_default = 0 where staff_id = #{staffId} and is_default = 1
     </update>
 
     <delete id="deleteStaffShop">
-        delete from staff_shop where shop_id = #{shopId} and user_id = #{userId}
+        delete from staff_shop where shop_id = #{shopId} and staff_id = #{staffId}
     </delete>
 
 </mapper>

@@ -30,4 +30,8 @@ public interface ShopMapper
     public int deleteShopById(Long id);
 
     public int countActiveOrdersByShopId(Long shopId);
+
+    public int countMakingQueueOrdersByShopId(@Param("shopId") Long shopId);
+
+    public int countMakingQueueCupsByShopId(@Param("shopId") Long shopId);
 }

@@ -1,0 +1,46 @@
+{
+  "pages": [
+    {
+      "path": "pages/login/index",
+      "style": {
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/workbench/index",
+      "style": {
+        "navigationStyle": "custom",
+        "enablePullDownRefresh": true,
+        "backgroundColor": "#f7f4ee"
+      }
+    },
+    {
+      "path": "pages/shop/select",
+      "style": {
+        "navigationStyle": "custom",
+        "enablePullDownRefresh": true,
+        "backgroundColor": "#f7f4ee"
+      }
+    },
+    {
+      "path": "pages/order/board",
+      "style": {
+        "navigationStyle": "custom",
+        "enablePullDownRefresh": true,
+        "backgroundColor": "#f7f4ee"
+      }
+    },
+    {
+      "path": "pages/order/verify",
+      "style": {
+        "navigationStyle": "custom",
+        "backgroundColor": "#f7f4ee"
+      }
+    }
+  ],
+  "globalStyle": {
+    "backgroundColor": "#f7f4ee",
+    "navigationBarBackgroundColor": "#f7f4ee",
+    "navigationBarTextStyle": "black"
+  }
+}

@@ -117,8 +117,16 @@ c-auth:
     app-id: ${WECHAT_MINI_APP_ID:}
     app-secret: ${WECHAT_MINI_APP_SECRET:}
 
+# 门店员工端认证配置。开发可独立开启 mock，未配置时沿用 C 端开关。
+staff-auth:
+  jwt:
+    secret: ${STAFF_TOKEN_SECRET:${TOKEN_SECRET}}
+    expire-days: 7
+  sms:
+    mock-enabled: ${STAFF_SMS_MOCK_ENABLED:${C_SMS_MOCK_ENABLED:false}}
+
 cors:
-  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost}
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:5174,http://localhost}
 
 # MyBatis配置
 mybatis:

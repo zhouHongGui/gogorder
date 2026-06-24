@@ -47,6 +47,15 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <if test="phone != null and phone != ''">
             and phone like concat('%', #{phone}, '%')
         </if>
+        <if test="province != null and province != ''">
+            and province = #{province}
+        </if>
+        <if test="city != null and city != ''">
+            and city = #{city}
+        </if>
+        <if test="district != null and district != ''">
+            and district = #{district}
+        </if>
         <if test="status != null">
             and status = #{status}
         </if>
@@ -155,6 +164,23 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         from biz_order
         where shop_id = #{shopId}
           and order_status in (0, 1, 2, 3)
+    </select>
+
+    <select id="countMakingQueueOrdersByShopId" parameterType="Long" resultType="int">
+        select count(1)
+        from biz_order
+        where shop_id = #{shopId}
+          and pay_status = 1
+          and order_status in (1, 2)
+    </select>
+
+    <select id="countMakingQueueCupsByShopId" parameterType="Long" resultType="int">
+        select coalesce(sum(i.quantity), 0)
+        from biz_order o
+        inner join biz_order_item i on i.order_id = o.id
+        where o.shop_id = #{shopId}
+          and o.pay_status = 1
+          and o.order_status in (1, 2)
     </select>
 
 </mapper>

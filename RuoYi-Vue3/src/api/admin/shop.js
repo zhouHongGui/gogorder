@@ -68,17 +68,17 @@ export function addShopStaff(id, data) {
   })
 }
 
-export function updateShopStaff(id, userId, data) {
+export function updateShopStaff(id, staffId, data) {
   return request({
-    url: '/api/admin/shop/' + id + '/staff/' + userId,
+    url: '/api/admin/shop/' + id + '/staff/' + staffId,
     method: 'put',
     data
   })
 }
 
-export function delShopStaff(id, userId) {
+export function delShopStaff(id, staffId) {
   return request({
-    url: '/api/admin/shop/' + id + '/staff/' + userId,
+    url: '/api/admin/shop/' + id + '/staff/' + staffId,
     method: 'delete'
   })
 }

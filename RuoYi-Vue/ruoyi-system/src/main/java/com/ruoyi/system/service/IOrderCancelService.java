@@ -9,6 +9,7 @@ public interface IOrderCancelService
     void cancelUnpaidOrder(Long userId, Long orderId);
     /** 定时任务超时取消未支付订单（幂等，多实例安全）。 */
     void cancelTimeoutOrder(Long orderId);
-    /** 管理端取消已接单订单并整单全额退款（每单仅一次）。 */
-    void cancelPaidOrderWithRefund(Long orderId, String cancelReason, Long operatorId);
+    /** 管理端/门店取消已接单订单并整单全额退款（每单仅一次）。
+     *  service 同时校验 operatorId 的门店授权和订单归属；cancelReason 必填且最多 200 字。 */
+    void cancelPaidOrderWithRefund(Long orderId, Long shopId, String cancelReason, Long operatorId);
 }

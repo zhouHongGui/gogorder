@@ -43,6 +43,8 @@ export interface Shop {
   isOpen: boolean
   instantAvailable: boolean
   preorderAvailable: boolean
+  makingQueueOrders?: number
+  makingQueueCups?: number
 }
 
 /** 附近门店查询参数（经纬度可选，可带关键字）。 */

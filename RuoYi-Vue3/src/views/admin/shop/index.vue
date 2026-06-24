@@ -7,6 +7,18 @@
       <el-form-item label="联系电话" prop="phone">
         <el-input v-model="queryParams.phone" placeholder="请输入联系电话" clearable style="width: 200px" @keyup.enter="handleQuery" />
       </el-form-item>
+      <el-form-item label="所在地区">
+        <el-cascader
+          v-model="queryRegion"
+          :options="regionOptions"
+          :props="regionCascaderProps"
+          clearable
+          filterable
+          placeholder="请选择省份/城市/区县"
+          style="width: 240px"
+          @change="handleQueryRegionChange"
+        />
+      </el-form-item>
       <el-form-item label="门店状态" prop="status">
         <el-select v-model="queryParams.status" placeholder="请选择门店状态" clearable style="width: 180px">
           <el-option v-for="item in shopStatusOptions" :key="item.value" :label="item.label" :value="item.value" />
@@ -138,19 +150,18 @@
             />
           </el-form-item>
           <el-row :gutter="20">
-            <el-col :span="8">
-              <el-form-item label="省份" prop="province">
-                <el-input v-model="form.province" placeholder="地图选点后自动填写" maxlength="50" />
-              </el-form-item>
-            </el-col>
-            <el-col :span="8">
-              <el-form-item label="城市" prop="city">
-                <el-input v-model="form.city" placeholder="地图选点后自动填写" maxlength="50" />
-              </el-form-item>
-            </el-col>
-            <el-col :span="8">
-              <el-form-item label="区县" prop="district">
-                <el-input v-model="form.district" placeholder="地图选点后自动填写" maxlength="50" />
+            <el-col :span="24">
+              <el-form-item label="省市区" prop="district">
+                <el-cascader
+                  v-model="formRegion"
+                  :options="regionOptions"
+                  :props="regionCascaderProps"
+                  clearable
+                  filterable
+                  placeholder="请选择省份/城市/区县"
+                  style="width: 100%"
+                  @change="handleFormRegionChange"
+                />
               </el-form-item>
             </el-col>
             <el-col :span="24">
@@ -243,14 +254,9 @@
 
     <el-dialog :title="staffTitle" v-model="staffOpen" width="820px" append-to-body>
       <el-form ref="staffRef" :model="staffForm" :rules="staffRules" :inline="true">
-        <el-form-item label="员工" prop="userId">
-          <el-select v-model="staffForm.userId" filterable :disabled="staffEditing" placeholder="请选择员工" style="width: 220px">
-            <el-option v-for="user in userOptions" :key="user.userId" :label="user.nickName + ' (' + user.userName + ')'" :value="user.userId" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="岗位" prop="role">
-          <el-select v-model="staffForm.role" style="width: 130px">
-            <el-option v-for="item in staffRoleOptions" :key="item.value" :label="item.label" :value="item.value" />
+        <el-form-item label="员工" prop="staffId">
+          <el-select v-model="staffForm.staffId" filterable :disabled="staffEditing" placeholder="请选择员工" style="width: 240px">
+            <el-option v-for="staff in staffOptions" :key="staff.id" :label="staff.nickname + ' (' + staff.account + ')'" :value="staff.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="默认门店" prop="isDefault">
@@ -263,12 +269,9 @@
       </el-form>
 
       <el-table v-loading="staffLoading" :data="staffList">
-        <el-table-column label="账号" prop="userName" />
-        <el-table-column label="姓名" prop="nickName" />
-        <el-table-column label="手机号" prop="phonenumber" />
-        <el-table-column label="岗位" align="center" width="100">
-          <template #default="scope">{{ staffRoleLabel(scope.row.role) }}</template>
-        </el-table-column>
+        <el-table-column label="账号" prop="account" />
+        <el-table-column label="姓名" prop="nickname" />
+        <el-table-column label="手机号" prop="phone" />
         <el-table-column label="默认门店" align="center" width="100">
           <template #default="scope">
             <el-tag v-if="scope.row.isDefault === 1" type="success">是</el-tag>
@@ -288,7 +291,8 @@
 
 <script setup name="AdminShop">
 import AmapPicker from "@/components/AmapPicker"
-import { listUser } from "@/api/system/user"
+import { listStaff } from "@/api/admin/staff"
+import { chinaAreaTreeOptions } from "@/utils/chinaAreaTreeOptions"
 import {
   addShop,
   addShopStaff,
@@ -309,11 +313,11 @@ const shopStatusOptions = [
   { label: "营业中", value: 1 },
   { label: "暂停接单", value: 2 }
 ]
-const staffRoleOptions = [
-  { label: "店员", value: "STAFF" },
-  { label: "店长", value: "MANAGER" },
-  { label: "管理员授权", value: "ADMIN" }
-]
+const regionOptions = chinaAreaTreeOptions
+const regionCascaderProps = {
+  checkStrictly: true,
+  emitPath: true
+}
 
 const loading = ref(true)
 const showSearch = ref(true)
@@ -327,7 +331,9 @@ const staffEditing = ref(false)
 const staffTitle = ref("")
 const currentShopId = ref()
 const staffList = ref([])
-const userOptions = ref([])
+const staffOptions = ref([])
+const queryRegion = ref([])
+const formRegion = ref([])
 
 const data = reactive({
   queryParams: {
@@ -335,6 +341,9 @@ const data = reactive({
     pageSize: 10,
     name: undefined,
     phone: undefined,
+    province: undefined,
+    city: undefined,
+    district: undefined,
     status: undefined
   },
   form: {},
@@ -345,6 +354,7 @@ const data = reactive({
     phone: [{ required: true, message: "联系电话不能为空", trigger: "blur" }],
     openTime: [{ required: true, message: "营业开始时间不能为空", trigger: "change" }],
     closeTime: [{ required: true, message: "营业结束时间不能为空", trigger: "change" }],
+    district: [{ required: true, message: "请选择省市区", trigger: "change" }],
     preorderMinMinutes: [{ required: true, message: "最早预约分钟数不能为空", trigger: "change" }],
     preorderMaxDays: [{ required: true, message: "最长预约天数不能为空", trigger: "change" }],
     makeLeadMinutes: [{ required: true, message: "制作提前分钟数不能为空", trigger: "change" }],
@@ -352,8 +362,7 @@ const data = reactive({
     sortOrder: [{ required: true, message: "排序不能为空", trigger: "change" }]
   },
   staffRules: {
-    userId: [{ required: true, message: "请选择员工", trigger: "change" }],
-    role: [{ required: true, message: "请选择岗位", trigger: "change" }]
+    staffId: [{ required: true, message: "请选择员工", trigger: "change" }]
   }
 })
 
@@ -392,17 +401,27 @@ function reset() {
     packFee: 100,
     sortOrder: 0
   }
+  formRegion.value = []
   proxy.resetForm("shopRef")
 }
 
 function handleQuery() {
+  syncQueryRegion()
   queryParams.value.pageNum = 1
   getList()
 }
 
 function resetQuery() {
   proxy.resetForm("queryRef")
+  queryRegion.value = []
+  queryParams.value.province = undefined
+  queryParams.value.city = undefined
+  queryParams.value.district = undefined
   handleQuery()
+}
+
+function handleQueryRegionChange() {
+  syncQueryRegion()
 }
 
 function handleAdd() {
@@ -417,6 +436,7 @@ function handleUpdate(row) {
     form.value = response.data
     form.value.openTime = formatTime(form.value.openTime)
     form.value.closeTime = formatTime(form.value.closeTime)
+    syncFormRegionFromFields()
     open.value = true
     title.value = "修改门店"
   })
@@ -444,6 +464,14 @@ function handleLocationSelect(location) {
   Object.entries(location).forEach(([key, value]) => {
     if (value !== undefined) form.value[key] = value
   })
+  syncFormRegionFromFields()
+}
+
+function handleFormRegionChange(region) {
+  const [province, city, district] = region || []
+  form.value.province = province || ""
+  form.value.city = city || ""
+  form.value.district = district || ""
 }
 
 function handleStatusChange(row, status) {
@@ -469,9 +497,9 @@ function handleStaff(row) {
   staffOpen.value = true
   resetStaffForm()
   loadStaff()
-  if (!userOptions.value.length) {
-    listUser({ pageNum: 1, pageSize: 1000 }).then(response => {
-      userOptions.value = response.rows
+  if (!staffOptions.value.length) {
+    listStaff({ pageNum: 1, pageSize: 1000 }).then(response => {
+      staffOptions.value = response.rows
     })
   }
 }
@@ -488,8 +516,7 @@ function loadStaff() {
 function resetStaffForm() {
   staffEditing.value = false
   staffForm.value = {
-    userId: undefined,
-    role: "STAFF",
+    staffId: undefined,
     isDefault: 0
   }
   proxy.resetForm("staffRef")
@@ -498,8 +525,7 @@ function resetStaffForm() {
 function editStaff(row) {
   staffEditing.value = true
   staffForm.value = {
-    userId: row.userId,
-    role: row.role,
+    staffId: row.staffId,
     isDefault: row.isDefault
   }
 }
@@ -508,8 +534,7 @@ function submitStaff() {
   proxy.$refs.staffRef.validate(valid => {
     if (!valid) return
     const action = staffEditing.value
-      ? updateShopStaff(currentShopId.value, staffForm.value.userId, {
-          role: staffForm.value.role,
+      ? updateShopStaff(currentShopId.value, staffForm.value.staffId, {
           isDefault: staffForm.value.isDefault
         })
       : addShopStaff(currentShopId.value, staffForm.value)
@@ -522,12 +547,46 @@ function submitStaff() {
 }
 
 function removeStaff(row) {
-  proxy.$modal.confirm('是否确认移除员工"' + row.nickName + '"？').then(() => {
-    return delShopStaff(currentShopId.value, row.userId)
+  proxy.$modal.confirm('是否确认移除员工"' + row.nickname + '"？').then(() => {
+    return delShopStaff(currentShopId.value, row.staffId)
   }).then(() => {
     proxy.$modal.msgSuccess("移除成功")
     loadStaff()
   }).catch(() => {})
+}
+
+function syncQueryRegion() {
+  const [province, city, district] = queryRegion.value || []
+  queryParams.value.province = province || undefined
+  queryParams.value.city = city || undefined
+  queryParams.value.district = district || undefined
+}
+
+function syncFormRegionFromFields() {
+  const province = form.value.province
+  const city = form.value.city
+  const district = form.value.district
+  if (!province) {
+    formRegion.value = []
+    return
+  }
+  const regionPath = findRegionPath(province, city, district)
+  if (regionPath.length > 0) {
+    formRegion.value = regionPath
+    return
+  }
+  formRegion.value = [province]
+}
+
+function findRegionPath(province, city, district) {
+  const provinceOption = regionOptions.find(item => item.value === province)
+  if (!provinceOption) return []
+  if (!city) return [province]
+  const cityOption = provinceOption.children?.find(item => item.value === city)
+  if (!cityOption) return [province]
+  if (!district) return [province, city]
+  const districtOption = cityOption.children?.find(item => item.value === district)
+  return districtOption ? [province, city, district] : [province, city]
 }
 
 function formatAddress(row) {
@@ -536,10 +595,6 @@ function formatAddress(row) {
 
 function formatTime(value) {
   return value ? String(value).slice(0, 5) : ""
-}
-
-function staffRoleLabel(value) {
-  return staffRoleOptions.find(item => item.value === value)?.label || value
 }
 
 getList()

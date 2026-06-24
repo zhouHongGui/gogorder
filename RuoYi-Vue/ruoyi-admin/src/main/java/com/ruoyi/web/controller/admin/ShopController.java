@@ -132,23 +132,24 @@ public class ShopController extends BaseController
     @PostMapping("/{id}/staff")
     public AjaxResult addStaff(@PathVariable Long id, @Validated @RequestBody StaffShopRequest request)
     {
-        return toAjax(staffShopService.insertStaffShop(id, request));
+        int rows = staffShopService.insertStaffShop(id, request);
+        return toAjax(rows);
     }
 
     @PreAuthorize("@ss.hasPermi('admin:shop:staff')")
     @Log(title = "门店员工关联", businessType = BusinessType.UPDATE)
-    @PutMapping("/{id}/staff/{userId}")
-    public AjaxResult updateStaff(@PathVariable Long id, @PathVariable Long userId,
+    @PutMapping("/{id}/staff/{staffId}")
+    public AjaxResult updateStaff(@PathVariable Long id, @PathVariable Long staffId,
             @Validated @RequestBody StaffShopUpdateRequest request)
     {
-        return toAjax(staffShopService.updateStaffShop(id, userId, request));
+        return toAjax(staffShopService.updateStaffShop(id, staffId, request));
     }
 
     @PreAuthorize("@ss.hasPermi('admin:shop:staff')")
     @Log(title = "门店员工关联", businessType = BusinessType.DELETE)
-    @DeleteMapping("/{id}/staff/{userId}")
-    public AjaxResult removeStaff(@PathVariable Long id, @PathVariable Long userId)
+    @DeleteMapping("/{id}/staff/{staffId}")
+    public AjaxResult removeStaff(@PathVariable Long id, @PathVariable Long staffId)
     {
-        return toAjax(staffShopService.deleteStaffShop(id, userId));
+        return toAjax(staffShopService.deleteStaffShop(id, staffId));
     }
 }

@@ -1,0 +1,25 @@
+import { defineConfig, loadEnv } from 'vite'
+import uniModule from '@dcloudio/vite-plugin-uni'
+
+const uni = (uniModule as typeof uniModule & { default?: typeof uniModule }).default || uniModule
+
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, '.')
+  return {
+    plugins: [uni()],
+    server: {
+      port: 5174,
+      host: true,
+      proxy: {
+        '/api': {
+          target: env.VITE_PROXY_TARGET || 'http://localhost:8080',
+          changeOrigin: true
+        },
+        '/logout': {
+          target: env.VITE_PROXY_TARGET || 'http://localhost:8080',
+          changeOrigin: true
+        }
+      }
+    }
+  }
+})

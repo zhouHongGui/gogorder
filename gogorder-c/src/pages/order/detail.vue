@@ -16,6 +16,16 @@
         </view>
         <text class="status-copy">{{ statusMessage(order.orderStatus) }}</text>
         <text class="status-tip">{{ statusTip(order.orderStatus) }}</text>
+        <view v-if="showQueueInfo" class="queue-card">
+          <view>
+            <text class="queue-label">前方制作</text>
+            <text class="queue-copy">门店正在按队列制作，请留意取餐号</text>
+          </view>
+          <view class="queue-numbers">
+            <text><text class="queue-value">{{ queueAheadOrders }}</text> 单</text>
+            <text><text class="queue-value">{{ queueAheadCups }}</text> 杯</text>
+          </view>
+        </view>
       </view>
 
       <view class="content">
@@ -159,6 +169,12 @@ const showActions = computed(() => {
   const status = order.value?.orderStatus
   return status === 0 || status === 4 || status === 5
 })
+const showQueueInfo = computed(() => {
+  const current = order.value
+  return Boolean(current && current.payStatus === 1 && (current.orderStatus === 1 || current.orderStatus === 2))
+})
+const queueAheadOrders = computed(() => Math.max(0, Number(order.value?.queueAheadOrders || 0)))
+const queueAheadCups = computed(() => Math.max(0, Number(order.value?.queueAheadCups || 0)))
 
 onLoad((options?: Record<string, unknown>) => {
   orderId.value = Number(options?.orderId)
@@ -286,6 +302,7 @@ function formatTime(value: string): string {
 .loading-state { padding-top: 260rpx; color: #aaa; font-size: 23rpx; text-align: center; }
 
 .status-hero { padding: 40rpx 48rpx 42rpx; background: #fff; }.status-main { display: flex; align-items: baseline; gap: 15rpx; }.pickup-number { color: #075fea; font-size: 54rpx; font-weight: 900; letter-spacing: 2rpx; }.status-title { color: #202020; font-size: 31rpx; font-weight: 900; }.status-copy { display: block; margin-top: 13rpx; color: #075fea; font-size: 22rpx; }.status-tip { display: block; margin-top: 16rpx; color: #aaa; font-size: 18rpx; }.status-hero.pending .status-copy { color: #c57d24; }.status-hero.completed .status-copy, .status-hero.cancelled .status-copy { color: #888; }
+.queue-card { display: flex; align-items: center; justify-content: space-between; gap: 22rpx; margin-top: 26rpx; padding: 22rpx 24rpx; border-radius: 24rpx; background: linear-gradient(135deg, #181711, #3b342a); color: #fff; }.queue-label { display: block; color: #f0c68d; font-size: 22rpx; font-weight: 800; letter-spacing: 3rpx; }.queue-copy { display: block; margin-top: 8rpx; color: rgba(255,255,255,.62); font-size: 18rpx; }.queue-numbers { display: flex; flex: none; gap: 20rpx; color: rgba(255,255,255,.72); font-size: 20rpx; }.queue-value { color: #f0c68d; font-size: 38rpx; font-weight: 900; }
 
 .content { padding: 26rpx 22rpx 20rpx; }.main-card, .info-card { border-radius: 29rpx; background: #fff; }.main-card { padding: 28rpx 30rpx 12rpx; }.shop-row { height: 58rpx; display: flex; align-items: center; }.order-type { padding: 8rpx 18rpx; border-radius: 25rpx; background: #075fea; color: #fff; font-size: 20rpx; font-weight: 800; }.shop-name { min-width: 0; flex: 1; margin-left: 13rpx; overflow: hidden; color: #333; font-size: 25rpx; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }.phone-button { width: 56rpx; height: 56rpx; border-radius: 50%; color: #075fea; display: flex; align-items: center; justify-content: center; }.phone-icon { font-size: 35rpx; transform: rotate(-35deg); }
 .section-title { display: block; margin-top: 20rpx; color: #333; font-size: 24rpx; font-weight: 800; }.product-list { margin-top: 8rpx; }.product-row { padding: 19rpx 0; display: flex; align-items: center; }.product-image, .product-placeholder { width: 105rpx; height: 105rpx; flex: none; border-radius: 18rpx; background: #f5f5f5; }.product-placeholder { color: #075fea; font-size: 24rpx; font-weight: 900; line-height: 105rpx; text-align: center; }.product-copy { min-width: 0; flex: 1; margin-left: 18rpx; display: flex; flex-direction: column; }.product-name { max-width: 350rpx; overflow: hidden; font-size: 23rpx; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }.product-spec { max-width: 370rpx; margin-top: 8rpx; overflow: hidden; color: #aaa; font-size: 17rpx; text-overflow: ellipsis; white-space: nowrap; }.product-price { margin-left: 12rpx; display: flex; flex-direction: column; align-items: flex-end; gap: 8rpx; font-size: 19rpx; }.product-price text:first-child { color: #075fea; font-size: 25rpx; font-weight: 800; }.product-price text:last-child { color: #777; }

@@ -54,6 +54,10 @@ public class CShopView
     private boolean instantAvailable;
     /** 是否可下预订单（恒 true，所有门店均支持预订单）。 */
     private boolean preorderAvailable;
+    /** 当前制作队列订单数（已接单/制作中）。 */
+    private Integer makingQueueOrders;
+    /** 当前制作队列杯数（已接单/制作中订单明细数量合计）。 */
+    private Integer makingQueueCups;
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -95,4 +99,8 @@ public class CShopView
     public void setInstantAvailable(boolean instantAvailable) { this.instantAvailable = instantAvailable; }
     public boolean isPreorderAvailable() { return preorderAvailable; }
     public void setPreorderAvailable(boolean preorderAvailable) { this.preorderAvailable = preorderAvailable; }
+    public Integer getMakingQueueOrders() { return makingQueueOrders; }
+    public void setMakingQueueOrders(Integer makingQueueOrders) { this.makingQueueOrders = makingQueueOrders; }
+    public Integer getMakingQueueCups() { return makingQueueCups; }
+    public void setMakingQueueCups(Integer makingQueueCups) { this.makingQueueCups = makingQueueCups; }
 }

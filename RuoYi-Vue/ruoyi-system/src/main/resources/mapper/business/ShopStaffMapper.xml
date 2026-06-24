@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ruoyi.system.mapper.ShopStaffMapper">
+    <resultMap id="ShopStaffResult" type="ShopStaff">
+        <id property="id" column="id"/>
+        <result property="account" column="account"/>
+        <result property="nickname" column="nickname"/>
+        <result property="phone" column="phone"/>
+        <result property="password" column="password"/>
+        <result property="status" column="status"/>
+        <result property="tokenVersion" column="token_version"/>
+        <result property="lastLoginIp" column="last_login_ip"/>
+        <result property="lastLoginTime" column="last_login_time"/>
+        <result property="delFlag" column="del_flag"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateTime" column="update_time"/>
+    </resultMap>
+
+    <sql id="selectColumns">
+        select id, account, nickname, phone, password, status, token_version,
+               last_login_ip, last_login_time, del_flag, create_time, update_time
+        from shop_staff
+    </sql>
+
+    <select id="selectList" parameterType="ShopStaff" resultMap="ShopStaffResult">
+        <include refid="selectColumns"/> where del_flag = 0
+        <if test="account != null and account != ''">and account like concat('%', #{account}, '%')</if>
+        <if test="nickname != null and nickname != ''">and nickname like concat('%', #{nickname}, '%')</if>
+        <if test="phone != null and phone != ''">and phone like concat('%', #{phone}, '%')</if>
+        <if test="status != null">and status = #{status}</if>
+        order by id desc
+    </select>
+    <select id="selectById" parameterType="Long" resultMap="ShopStaffResult">
+        <include refid="selectColumns"/> where id = #{id} and del_flag = 0
+    </select>
+    <select id="selectByAccount" parameterType="String" resultMap="ShopStaffResult">
+        <include refid="selectColumns"/> where account = #{account} and del_flag = 0 limit 1
+    </select>
+    <select id="selectByPhone" parameterType="String" resultMap="ShopStaffResult">
+        <include refid="selectColumns"/> where phone = #{phone} and del_flag = 0 limit 1
+    </select>
+    <insert id="insert" parameterType="ShopStaff" useGeneratedKeys="true" keyProperty="id">
+        insert into shop_staff(account, nickname, phone, password, status, token_version, del_flag, create_time)
+        values(#{account}, #{nickname}, #{phone}, #{password}, #{status}, 0, 0, sysdate())
+    </insert>
+    <update id="update" parameterType="ShopStaff">
+        update shop_staff
+        <set>
+            <if test="nickname != null">nickname = #{nickname},</if>
+            <if test="phone != null">phone = #{phone},</if>
+            <if test="password != null and password != ''">password = #{password},</if>
+            <if test="status != null">status = #{status},</if>
+            token_version = token_version + 1,
+            update_time = sysdate()
+        </set>
+        where id = #{id} and del_flag = 0
+    </update>
+    <update id="updateLoginInfo">
+        update shop_staff set last_login_ip = #{ip}, last_login_time = sysdate() where id = #{id} and del_flag = 0
+    </update>
+    <update id="deleteById" parameterType="Long">
+        update shop_staff set del_flag = 2, token_version = token_version + 1, update_time = sysdate()
+        where id = #{id} and del_flag = 0
+    </update>
+</mapper>

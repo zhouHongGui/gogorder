@@ -32,6 +32,13 @@
               <text class="meta-divider">·</text>
               <text>{{ businessHours(shop) }}</text>
             </view>
+            <view class="queue-status">
+              <text class="queue-prefix">前方</text>
+              <text class="queue-number">{{ makingQueueOrders }}</text>
+              <text>单 / </text>
+              <text class="queue-number">{{ makingQueueCups }}</text>
+              <text>杯制作中</text>
+            </view>
           </view>
           <view class="mode-switch">
             <view
@@ -285,7 +292,8 @@ import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { addCartItem, clearCart, getCart, removeCartItem, updateCartItem } from '../../api/cart'
 import { getCategories, getProductDetail, getProducts } from '../../api/product'
-import { businessHours, formatDistance, getCurrentShop } from '../../utils/shop'
+import { getShopDetail } from '../../api/shop'
+import { businessHours, formatDistance, getCurrentShop, saveCurrentShop } from '../../utils/shop'
 import type { AddCartItemRequest, Cart, CartItem } from '../../types/cart'
 import type { MenuCategory, Product, ProductSpec, SpecOption, SpecSelections } from '../../types/product'
 import type { OrderType, Shop } from '../../types/shop'
@@ -301,7 +309,9 @@ const emptyShop: Shop = {
   distance: null,
   isOpen: false,
   instantAvailable: false,
-  preorderAvailable: true
+  preorderAvailable: true,
+  makingQueueOrders: 0,
+  makingQueueCups: 0
 }
 const createEmptyCart = (currentShop?: Shop): Cart => ({
   shopId: currentShop?.id || null,
@@ -337,9 +347,12 @@ let cartBumpTimer: ReturnType<typeof setTimeout> | undefined
 let categoriesRequestId = 0
 let productsRequestId = 0
 let cartRequestId = 0
+let shopDetailRequestId = 0
 let cartMutationShopId: number | null = null
 
 const selectedCategoryName = computed(() => categories.value.find(item => item.id === selectedCategoryId.value)?.name || '全部商品')
+const makingQueueOrders = computed(() => Math.max(0, Number(shop.value.makingQueueOrders || 0)))
+const makingQueueCups = computed(() => Math.max(0, Number(shop.value.makingQueueCups || 0)))
 const cartHint = computed(() => {
   if (!cart.value.totalCount) return '购物车是空的'
   return `已选 ${cart.value.totalCount} 件`
@@ -375,7 +388,7 @@ onLoad(async (options?: Record<string, unknown>) => {
     return
   }
   orderType.value = options?.orderType === 'PREORDER' || !shop.value.instantAvailable ? 'PREORDER' : 'NORMAL'
-  await Promise.all([loadCategories(), loadProducts(), loadCart()])
+  await Promise.all([refreshShopDetail(), loadCategories(), loadProducts(), loadCart()])
 })
 
 onShow(() => {
@@ -389,11 +402,34 @@ onShow(() => {
     cart.value = createEmptyCart(selected)
     cartVisible.value = false
     if (!selected.instantAvailable) orderType.value = 'PREORDER'
+    refreshShopDetail()
     loadCategories()
     loadProducts()
+  } else if (shop.value.id) {
+    refreshShopDetail()
   }
   loadCart()
 })
+
+async function refreshShopDetail() {
+  const shopId = shop.value?.id
+  if (!shopId) return
+  const requestId = ++shopDetailRequestId
+  const currentDistance = shop.value.distance
+  try {
+    const detail = await getShopDetail(shopId)
+    if (requestId !== shopDetailRequestId || shop.value.id !== shopId) return
+    const refreshed = {
+      ...detail,
+      distance: currentDistance ?? detail.distance
+    }
+    shop.value = refreshed
+    saveCurrentShop(refreshed)
+    if (!refreshed.instantAvailable) orderType.value = 'PREORDER'
+  } catch {
+    // 门店详情刷新失败不影响菜单与购物车使用。
+  }
+}
 
 /** 加载分类列表（带请求竞态保护：返回时若已发起新请求或切了门店则丢弃结果）。 */
 async function loadCategories() {
@@ -1520,6 +1556,30 @@ function money(cents: number | null | undefined): string {
   white-space: nowrap;
 }
 
+.queue-status {
+  display: inline-flex;
+  align-items: baseline;
+  margin-top: 10rpx;
+  padding: 7rpx 12rpx;
+  border-radius: 999rpx;
+  background: rgba(255, 255, 255, 0.74);
+  color: #8b6a49;
+  font-size: 17rpx;
+  font-weight: 700;
+}
+
+.queue-prefix {
+  margin-right: 5rpx;
+  color: #af6a26;
+}
+
+.queue-number {
+  margin: 0 4rpx;
+  color: #e57d1d;
+  font-size: 24rpx;
+  font-weight: 900;
+}
+
 .mode-switch {
   display: flex;
   position: absolute;
@@ -2104,6 +2164,24 @@ function money(cents: number | null | undefined): string {
   margin-top: 12rpx;
   color: #8f8579;
   font-size: 16rpx;
+}
+
+.queue-status {
+  margin-top: 10rpx;
+  padding: 7rpx 13rpx;
+  background: #fff2df;
+  color: #8c6542;
+  font-size: 18rpx;
+  font-weight: 720;
+}
+
+.queue-prefix {
+  color: #b86b21;
+}
+
+.queue-number {
+  color: #e57d1d;
+  font-size: 25rpx;
 }
 
 .mode-switch {

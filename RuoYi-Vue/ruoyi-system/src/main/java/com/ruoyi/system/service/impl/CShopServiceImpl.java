@@ -62,7 +62,7 @@ public class CShopServiceImpl implements ICShopService
         String normalizedKeyword = StringUtils.trim(keyword);
         LocalTime now = LocalTime.now();
         return shopMapper.selectCNearbyShops(longitude, latitude, normalizedKeyword, NEARBY_SHOP_LIMIT).stream()
-                .map(shop -> buildView(shop, longitude, latitude, now))
+                .map(shop -> buildView(shop, longitude, latitude, now, false))
                 .toList();
     }
 
@@ -71,7 +71,7 @@ public class CShopServiceImpl implements ICShopService
     public CShopView selectShopDetail(Long id)
     {
         Shop shop = requireShop(id);
-        return buildView(shop, null, null, LocalTime.now());
+        return buildView(shop, null, null, LocalTime.now(), true);
     }
 
     /**
@@ -109,7 +109,7 @@ public class CShopServiceImpl implements ICShopService
      *
      * @param longitude 调用点经度（详情接口传 null，不计算距离）
      */
-    private CShopView buildView(Shop shop, BigDecimal longitude, BigDecimal latitude, LocalTime now)
+    private CShopView buildView(Shop shop, BigDecimal longitude, BigDecimal latitude, LocalTime now, boolean includeQueue)
     {
         boolean withinBusinessHours = shop.isOpenAt(now);
         // 即时单可用 = 门店状态营业中(1) 且当前在营业时段。
@@ -135,6 +135,16 @@ public class CShopServiceImpl implements ICShopService
         view.setIsOpen(withinBusinessHours);
         view.setInstantAvailable(instantAvailable);
         view.setPreorderAvailable(true);   // 预订单对所有门店开放
+        if (includeQueue)
+        {
+            view.setMakingQueueOrders(shopMapper.countMakingQueueOrdersByShopId(shop.getId()));
+            view.setMakingQueueCups(shopMapper.countMakingQueueCupsByShopId(shop.getId()));
+        }
+        else
+        {
+            view.setMakingQueueOrders(0);
+            view.setMakingQueueCups(0);
+        }
         return view;
     }
 

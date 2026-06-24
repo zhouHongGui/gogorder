@@ -10,6 +10,20 @@
         <text class="pickup-label">取餐号</text>
         <text class="pickup-number">{{ order.pickupDisplay }}</text>
         <text class="pickup-shop">{{ order.shopName }}</text>
+        <view v-if="showQueueInfo" class="queue-panel">
+          <text class="queue-title">前方制作</text>
+          <view class="queue-metrics">
+            <view class="queue-metric">
+              <text class="queue-value">{{ queueAheadOrders }}</text>
+              <text class="queue-unit">单</text>
+            </view>
+            <view class="queue-divider" />
+            <view class="queue-metric">
+              <text class="queue-value">{{ queueAheadCups }}</text>
+              <text class="queue-unit">杯</text>
+            </view>
+          </view>
+        </view>
       </view>
 
       <view class="detail-list">
@@ -28,7 +42,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { clearCart } from '../../api/cart'
 import { getOrderDetail, payOrder } from '../../api/order'
@@ -40,6 +54,12 @@ const success = ref(false)
 const errorMessage = ref('支付失败，请重试')
 const balanceAfter = ref<number | null>(null)
 const order = ref<OrderDetail | null>(null)
+const showQueueInfo = computed(() => {
+  const current = order.value
+  return Boolean(success.value && current && current.payStatus === 1 && (current.orderStatus === 1 || current.orderStatus === 2))
+})
+const queueAheadOrders = computed(() => Math.max(0, Number(order.value?.queueAheadOrders || 0)))
+const queueAheadCups = computed(() => Math.max(0, Number(order.value?.queueAheadCups || 0)))
 
 /**
  * 页面加载：从路由参数读 orderId/success/error/balanceAfter。
@@ -110,6 +130,13 @@ function formatTime(value: string): string {
 .pickup-label { display: block; color: #d8b07a; font-size: 20rpx; letter-spacing: 5rpx; }
 .pickup-number { display: block; margin-top: 8rpx; font-size: 80rpx; font-weight: 900; letter-spacing: 8rpx; }
 .pickup-shop { display: block; margin-top: 8rpx; color: rgba(255,255,255,.65); font-size: 22rpx; }
+.queue-panel { margin-top: 28rpx; padding: 22rpx 24rpx; border-radius: 24rpx; background: rgba(255,255,255,.1); }
+.queue-title { display: block; color: rgba(255,255,255,.64); font-size: 20rpx; letter-spacing: 3rpx; }
+.queue-metrics { display: flex; align-items: center; justify-content: center; margin-top: 12rpx; }
+.queue-metric { display: flex; align-items: baseline; gap: 6rpx; }
+.queue-value { color: #f3c987; font-size: 46rpx; font-weight: 900; }
+.queue-unit { color: rgba(255,255,255,.72); font-size: 22rpx; }
+.queue-divider { width: 1rpx; height: 38rpx; margin: 0 34rpx; background: rgba(255,255,255,.18); }
 .detail-list { margin-top: 30rpx; padding: 10rpx 0; border-top: 1rpx solid #eee9df; border-bottom: 1rpx solid #eee9df; }
 .detail-row { display: flex; justify-content: space-between; gap: 30rpx; padding: 16rpx 0; color: #847d72; font-size: 23rpx; text-align: right; }
 .detail-row text:last-child { color: #27231e; }

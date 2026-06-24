@@ -2,15 +2,16 @@
 
 ## 项目概述
 
-面向奶茶/饮品连锁品牌的**多门店在线点单系统**。C端 uni-app（微信小程序 + H5），B端和管理后台基于若依基础框架二次开发（Vue 3 + Vite 6）。
+面向奶茶/饮品连锁品牌的**多门店在线点单系统**。C端与门店员工端使用 uni-app（微信小程序 + H5），管理后台基于若依基础框架二次开发。
 
-**当前阶段**：项目已进入编码阶段，M02/M03/M05-M09 已有实现，当前持续完善 C 端交易链路并进行安全与性能审查修复。
+**当前阶段**：M02/M03/M05-M09 已有实现，M15 门店员工小程序已进入编码阶段。
 
 ## 技术栈
 
 | 层 | 技术 |
 |----|------|
 | C端 | uni-app (Vue 3) |
+| 门店员工端 | uni-app (Vue 3)，独立 `gogorder-staff` 工程 |
 | B端/管理后台 | Vue 3 + Vite 6 + Element Plus |
 | 后端框架 | 若依基础框架（**仅作底层能力**，业务模块独立） |
 | 后端语言 | Java 21 + Spring Boot 4.0.3 |
@@ -25,6 +26,7 @@ gogorder/
 ├── PRD-V1.0.md                        ← V1.0 主 PRD（入口概览）
 ├── RuoYi-Vue/                         ← 后端 Spring Boot + 若依管理端
 ├── gogorder-c/                        ← C端 uni-app 项目
+├── gogorder-staff/                    ← 门店员工端 uni-app 项目
 └── docs/                              ← 详细模块 PRD（见下方）
     ├── README.md                      ← 文档索引 + 依赖总图 + 开发阶段
     ├── M00-系统架构与技术方案.md
@@ -41,7 +43,8 @@ gogorder/
     ├── M11-数据统计看板.md
     ├── M12-微信消息推送.md
     ├── M13-全局枚举与接口契约.md         ← ⚠️ 所有文档的单一事实来源
-    └── M14-余额账户管理.md
+    ├── M14-余额账户管理.md
+    └── M15-门店员工小程序.md
 ```
 
 ## 阅读顺序（接手后按此顺序）
@@ -94,7 +97,7 @@ gogorder/
 - 预订单参数：preorder_min_minutes=30, preorder_max_days=7, make_lead_minutes=30。
 
 ### 员工
-- `staff_shop` 多对多关联表，店员默认一家，店长可关联多家。
+- `staff_shop` 多对多授权表，只表示员工可操作哪些门店；不维护每店职务。
 - B端接口必须校验门店越权（Header `X-Shop-Id`）。
 
 ### 购物车
@@ -132,7 +135,7 @@ gogorder/
 | 端 | 前缀 | 认证 |
 |----|------|------|
 | C端 | `/api/c/` | Bearer Token (JWT, 7天) |
-| B端 | `/api/b/` | 若依 Token |
+| B端 | `/api/b/` | 独立员工 JWT（shop_staff，与若依 Token 解耦） |
 | 管理后台 | `/api/admin/` | 若依 Token |
 
 - 统一响应：`{ code, msg, data }`

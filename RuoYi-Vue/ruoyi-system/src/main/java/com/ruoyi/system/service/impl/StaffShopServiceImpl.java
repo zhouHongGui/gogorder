@@ -4,15 +4,17 @@ import java.util.List;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.ruoyi.common.core.domain.entity.SysUser;
+import com.ruoyi.common.constant.HttpStatus;
 import com.ruoyi.common.exception.ServiceException;
 import com.ruoyi.system.domain.Shop;
+import com.ruoyi.system.domain.ShopStaff;
 import com.ruoyi.system.domain.StaffShop;
+import com.ruoyi.system.domain.dto.BShopContextView;
 import com.ruoyi.system.domain.dto.StaffShopRequest;
 import com.ruoyi.system.domain.dto.StaffShopUpdateRequest;
 import com.ruoyi.system.mapper.ShopMapper;
 import com.ruoyi.system.mapper.StaffShopMapper;
-import com.ruoyi.system.mapper.SysUserMapper;
+import com.ruoyi.system.mapper.ShopStaffMapper;
 import com.ruoyi.system.service.IStaffShopService;
 
 /**
@@ -28,7 +30,7 @@ public class StaffShopServiceImpl implements IStaffShopService
     private ShopMapper shopMapper;
 
     @Autowired
-    private SysUserMapper userMapper;
+    private ShopStaffMapper shopStaffMapper;
 
     @Override
     public List<StaffShop> selectStaffByShopId(Long shopId)
@@ -38,57 +40,89 @@ public class StaffShopServiceImpl implements IStaffShopService
     }
 
     @Override
+    public List<BShopContextView> selectShopsByStaffId(Long staffId)
+    {
+        requireStaff(staffId);
+        return staffShopMapper.selectShopContextsByStaffId(staffId);
+    }
+
+    @Override
     @Transactional
     public int insertStaffShop(Long shopId, StaffShopRequest request)
     {
         requireShop(shopId);
-        requireUser(request.getUserId());
-        if (staffShopMapper.selectStaffShop(shopId, request.getUserId()) != null)
+        requireStaff(request.getStaffId());
+        if (staffShopMapper.selectStaffShop(shopId, request.getStaffId()) != null)
         {
             throw new ServiceException("该员工已关联此门店");
         }
-        if (Integer.valueOf(1).equals(request.getIsDefault()))
+        // 首个门店关联强制设为默认，保证每个员工至少有一个默认门店（登录依赖默认门店）。
+        boolean firstShop = staffShopMapper.countShopsByStaffId(request.getStaffId()) == 0;
+        Integer effectiveDefault = firstShop ? 1 : request.getIsDefault();
+        if (Integer.valueOf(1).equals(effectiveDefault))
         {
-            staffShopMapper.clearDefaultByUserId(request.getUserId());
+            staffShopMapper.clearDefaultByStaffId(request.getStaffId());
         }
         StaffShop staffShop = toStaffShop(shopId, request);
+        staffShop.setIsDefault(effectiveDefault);
         return staffShopMapper.insertStaffShop(staffShop);
     }
 
     @Override
     @Transactional
-    public int updateStaffShop(Long shopId, Long userId, StaffShopUpdateRequest request)
+    public int updateStaffShop(Long shopId, Long staffId, StaffShopUpdateRequest request)
     {
         requireShop(shopId);
-        StaffShop current = requireStaffShop(shopId, userId);
+        StaffShop current = requireStaffShop(shopId, staffId);
+        if (Integer.valueOf(1).equals(current.getIsDefault())
+                && Integer.valueOf(0).equals(request.getIsDefault()))
+        {
+            throw new ServiceException("默认门店不能直接取消，请先指定新的默认门店");
+        }
         if (Integer.valueOf(1).equals(request.getIsDefault()))
         {
-            staffShopMapper.clearDefaultByUserId(userId);
+            staffShopMapper.clearDefaultByStaffId(staffId);
         }
-        current.setRole(request.getRole());
         current.setIsDefault(request.getIsDefault());
         return staffShopMapper.updateStaffShop(current);
     }
 
     @Override
     @Transactional
-    public int deleteStaffShop(Long shopId, Long userId)
+    public int deleteStaffShop(Long shopId, Long staffId)
     {
         requireShop(shopId);
-        StaffShop current = requireStaffShop(shopId, userId);
-        if (Integer.valueOf(1).equals(current.getIsDefault()) && staffShopMapper.countShopsByUserId(userId) > 1)
+        StaffShop current = requireStaffShop(shopId, staffId);
+        if (Integer.valueOf(1).equals(current.getIsDefault()) && staffShopMapper.countShopsByStaffId(staffId) > 1)
         {
             throw new ServiceException("请先为该员工指定新的默认门店");
         }
-        return staffShopMapper.deleteStaffShop(shopId, userId);
+        return staffShopMapper.deleteStaffShop(shopId, staffId);
+    }
+
+    @Override
+    public void requireShopAccess(Long staffId, Long shopId)
+    {
+        if (staffId == null || shopId == null)
+        {
+            throw new ServiceException("门店授权参数不能为空", HttpStatus.BAD_REQUEST);
+        }
+        ShopStaff staff = requireStaff(staffId);
+        if (!Integer.valueOf(0).equals(staff.getStatus()))
+        {
+            throw new ServiceException("员工账号已停用", HttpStatus.FORBIDDEN);
+        }
+        if (staffShopMapper.selectStaffShop(shopId, staffId) == null)
+        {
+            throw new ServiceException("无权访问当前门店", HttpStatus.FORBIDDEN);
+        }
     }
 
     private StaffShop toStaffShop(Long shopId, StaffShopRequest request)
     {
         StaffShop staffShop = new StaffShop();
         staffShop.setShopId(shopId);
-        staffShop.setUserId(request.getUserId());
-        staffShop.setRole(request.getRole());
+        staffShop.setStaffId(request.getStaffId());
         staffShop.setIsDefault(request.getIsDefault());
         return staffShop;
     }
@@ -103,19 +137,19 @@ public class StaffShopServiceImpl implements IStaffShopService
         return shop;
     }
 
-    private SysUser requireUser(Long userId)
+    private ShopStaff requireStaff(Long staffId)
     {
-        SysUser user = userMapper.selectUserById(userId);
-        if (user == null)
+        ShopStaff staff = shopStaffMapper.selectById(staffId);
+        if (staff == null)
         {
             throw new ServiceException("员工不存在或已删除");
         }
-        return user;
+        return staff;
     }
 
-    private StaffShop requireStaffShop(Long shopId, Long userId)
+    private StaffShop requireStaffShop(Long shopId, Long staffId)
     {
-        StaffShop staffShop = staffShopMapper.selectStaffShop(shopId, userId);
+        StaffShop staffShop = staffShopMapper.selectStaffShop(shopId, staffId);
         if (staffShop == null)
         {
             throw new ServiceException("员工未关联此门店");

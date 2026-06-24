@@ -79,10 +79,15 @@ CREATE TABLE IF NOT EXISTS `refund_ledger` (
   `amount` INT NOT NULL COMMENT '退款金额（分）',
   `idempotent_key` VARCHAR(64) NOT NULL COMMENT '幂等键：{orderId}:refund（每单仅一次整单全额退款）',
   `status` TINYINT DEFAULT 1 COMMENT '1成功',
+  `shop_id` BIGINT NOT NULL COMMENT '门店ID（审计：退款发生门店）',
+  `operator_id` BIGINT NOT NULL COMMENT '操作人shop_staff.id（0=历史未知操作人）',
+  `reason` VARCHAR(200) NOT NULL COMMENT '退款原因（必填，不可变审计）',
   `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_idempotent` (`idempotent_key`),
-  UNIQUE KEY `uk_order_id` (`order_id`)
+  UNIQUE KEY `uk_order_id` (`order_id`),
+  KEY `idx_shop_id` (`shop_id`),
+  KEY `idx_operator_id` (`operator_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='退款流水';
 
 CREATE TABLE IF NOT EXISTS `shop` (
@@ -115,19 +120,37 @@ CREATE TABLE IF NOT EXISTS `shop` (
   KEY `idx_location` (`longitude`, `latitude`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='门店（逻辑删除）';
 
+CREATE TABLE IF NOT EXISTS `shop_staff` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `account` VARCHAR(30) NOT NULL COMMENT '员工登录账号',
+  `nickname` VARCHAR(50) NOT NULL COMMENT '员工姓名',
+  `phone` VARCHAR(11) NOT NULL COMMENT '员工登录手机号',
+  `password` VARCHAR(100) NOT NULL COMMENT 'BCrypt密码',
+  `status` TINYINT NOT NULL DEFAULT 0 COMMENT '0正常 1停用',
+  `token_version` INT NOT NULL DEFAULT 0 COMMENT '敏感信息变更时递增，旧JWT失效',
+  `last_login_ip` VARCHAR(128) DEFAULT '',
+  `last_login_time` DATETIME DEFAULT NULL,
+  `del_flag` TINYINT NOT NULL DEFAULT 0 COMMENT '0正常 2删除',
+  `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_account` (`account`),
+  UNIQUE KEY `uk_phone` (`phone`),
+  KEY `idx_status_del` (`status`, `del_flag`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='独立门店员工账号';
+
 CREATE TABLE IF NOT EXISTS `staff_shop` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
-  `user_id` BIGINT NOT NULL COMMENT 'sys_user.id（若依用户）',
+  `staff_id` BIGINT NOT NULL COMMENT 'shop_staff.id',
   `shop_id` BIGINT NOT NULL,
   `is_default` TINYINT DEFAULT 0 COMMENT '1=默认门店',
-  `default_user_id` BIGINT GENERATED ALWAYS AS (
-    CASE WHEN `is_default` = 1 THEN `user_id` ELSE NULL END
-  ) STORED COMMENT '用于保证每个用户仅一个默认门店',
-  `role` VARCHAR(20) NOT NULL DEFAULT 'STAFF' COMMENT 'STAFF/MANAGER/ADMIN',
+  `default_staff_id` BIGINT GENERATED ALWAYS AS (
+    CASE WHEN `is_default` = 1 THEN `staff_id` ELSE NULL END
+  ) STORED COMMENT '用于保证每个员工仅一个默认门店',
   `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_user_shop` (`user_id`, `shop_id`),
-  UNIQUE KEY `uk_user_default` (`default_user_id`),
+  UNIQUE KEY `uk_staff_shop` (`staff_id`, `shop_id`),
+  UNIQUE KEY `uk_staff_default` (`default_staff_id`),
   KEY `idx_shop_id` (`shop_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='员工-门店关联';
 

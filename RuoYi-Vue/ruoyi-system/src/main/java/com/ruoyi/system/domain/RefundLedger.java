@@ -23,6 +23,12 @@ public class RefundLedger
     private String idempotentKey;
     /** 退款状态：1=成功。 */
     private Integer status;
+    /** 门店 ID（审计：在哪家门店发生的退款）。 */
+    private Long shopId;
+    /** 操作人 ID（审计：谁退的，shop_staff.id；0=历史未知操作人）。 */
+    private Long operatorId;
+    /** 退款原因（必填，不可变审计）。 */
+    private String reason;
     private LocalDateTime createTime;
 
     public Long getId() { return id; }
@@ -37,6 +43,12 @@ public class RefundLedger
     public void setIdempotentKey(String idempotentKey) { this.idempotentKey = idempotentKey; }
     public Integer getStatus() { return status; }
     public void setStatus(Integer status) { this.status = status; }
+    public Long getShopId() { return shopId; }
+    public void setShopId(Long shopId) { this.shopId = shopId; }
+    public Long getOperatorId() { return operatorId; }
+    public void setOperatorId(Long operatorId) { this.operatorId = operatorId; }
+    public String getReason() { return reason; }
+    public void setReason(String reason) { this.reason = reason; }
     public LocalDateTime getCreateTime() { return createTime; }
     public void setCreateTime(LocalDateTime createTime) { this.createTime = createTime; }
 }
