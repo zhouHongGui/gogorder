@@ -31,12 +31,113 @@
         <result property="updateTime" column="update_time"/>
     </resultMap>
 
+    <resultMap id="AdminOrderListResult" type="com.ruoyi.system.domain.dto.AdminOrderListItemView">
+        <id property="orderId" column="order_id"/>
+        <result property="orderNo" column="order_no"/>
+        <result property="userId" column="user_id"/>
+        <result property="userPhone" column="user_phone"/>
+        <result property="shopId" column="shop_id"/>
+        <result property="shopName" column="shop_name"/>
+        <result property="orderType" column="order_type"/>
+        <result property="scheduledPickupTime" column="scheduled_pickup_time"/>
+        <result property="orderStatus" column="order_status"/>
+        <result property="payStatus" column="pay_status"/>
+        <result property="refundStatus" column="refund_status"/>
+        <result property="productAmount" column="product_amount"/>
+        <result property="packFee" column="pack_fee"/>
+        <result property="totalAmount" column="total_amount"/>
+        <result property="itemCount" column="item_count"/>
+        <result property="pickupDisplay" column="pickup_display"/>
+        <result property="pickupDate" column="pickup_date"/>
+        <result property="estimatedReadyTime" column="estimated_ready_time"/>
+        <result property="payTime" column="pay_time"/>
+        <result property="acceptTime" column="accept_time"/>
+        <result property="makeStartTime" column="make_start_time"/>
+        <result property="completeMakeTime" column="complete_make_time"/>
+        <result property="verifyTime" column="verify_time"/>
+        <result property="cancelTime" column="cancel_time"/>
+        <result property="createTime" column="create_time"/>
+    </resultMap>
+
+    <resultMap id="AdminOrderDetailResult" type="com.ruoyi.system.domain.dto.AdminOrderDetailView">
+        <id property="orderId" column="order_id"/>
+        <result property="orderNo" column="order_no"/>
+        <result property="userId" column="user_id"/>
+        <result property="userPhone" column="user_phone"/>
+        <result property="shopId" column="shop_id"/>
+        <result property="shopName" column="shop_name"/>
+        <result property="shopPhone" column="shop_phone"/>
+        <result property="orderType" column="order_type"/>
+        <result property="scheduledPickupTime" column="scheduled_pickup_time"/>
+        <result property="orderStatus" column="order_status"/>
+        <result property="payStatus" column="pay_status"/>
+        <result property="refundStatus" column="refund_status"/>
+        <result property="productAmount" column="product_amount"/>
+        <result property="packFee" column="pack_fee"/>
+        <result property="totalAmount" column="total_amount"/>
+        <result property="remark" column="remark"/>
+        <result property="pickupDisplay" column="pickup_display"/>
+        <result property="pickupDate" column="pickup_date"/>
+        <result property="itemCount" column="item_count"/>
+        <result property="estimatedReadyTime" column="estimated_ready_time"/>
+        <result property="payTime" column="pay_time"/>
+        <result property="acceptTime" column="accept_time"/>
+        <result property="makeStartTime" column="make_start_time"/>
+        <result property="completeMakeTime" column="complete_make_time"/>
+        <result property="verifyTime" column="verify_time"/>
+        <result property="cancelTime" column="cancel_time"/>
+        <result property="cancelReason" column="cancel_reason"/>
+        <result property="createTime" column="create_time"/>
+    </resultMap>
+
     <sql id="selectOrderColumns">
         select id, order_no, submit_key, pickup_token, pickup_display, pickup_date, user_id, shop_id,
                order_type, scheduled_pickup_time, order_status, pay_status, refund_status,
                product_amount, pack_fee, total_amount, remark, pay_time, accept_time, make_start_time,
                complete_make_time, verify_time, cancel_time, cancel_reason, estimated_ready_time, create_time, update_time
         from biz_order
+    </sql>
+
+    <sql id="selectAdminOrderColumns">
+        select o.id as order_id, o.order_no, o.user_id, u.phone as user_phone, o.shop_id,
+               coalesce(s.name, '历史门店') as shop_name, s.phone as shop_phone,
+               o.order_type, o.scheduled_pickup_time, o.order_status, o.pay_status, o.refund_status,
+               o.product_amount, o.pack_fee, o.total_amount, o.remark, o.pickup_display, o.pickup_date,
+               (select coalesce(sum(oi.quantity), 0) from biz_order_item oi where oi.order_id = o.id) as item_count,
+               o.estimated_ready_time, o.pay_time, o.accept_time, o.make_start_time,
+               o.complete_make_time, o.verify_time, o.cancel_time, o.cancel_reason, o.create_time
+        from biz_order o
+        left join shop s on s.id = o.shop_id
+        left join c_user u on u.id = o.user_id
+    </sql>
+
+    <sql id="adminOrderFilter">
+        <where>
+            <if test="orderNo != null and orderNo != ''">
+                and o.order_no like concat('%', #{orderNo}, '%')
+            </if>
+            <if test="shopId != null">
+                and o.shop_id = #{shopId}
+            </if>
+            <if test="orderStatus != null">
+                and o.order_status = #{orderStatus}
+            </if>
+            <if test="payStatus != null">
+                and o.pay_status = #{payStatus}
+            </if>
+            <if test="refundStatus != null">
+                and o.refund_status = #{refundStatus}
+            </if>
+            <if test="phone != null and phone != ''">
+                and u.phone like concat('%', #{phone}, '%')
+            </if>
+            <if test="startTime != null">
+                and o.create_time &gt;= #{startTime}
+            </if>
+            <if test="endTime != null">
+                and o.create_time &lt;= #{endTime}
+            </if>
+        </where>
     </sql>
 
     <sql id="userOrderFilter">
@@ -261,6 +362,15 @@
         select current_seq from pickup_sequence where shop_id = #{shopId} and pickup_date = #{pickupDate}
     </select>
     <!-- ===== 制作调度（串行队列，见 M15 §6.4）===== -->
+    <select id="selectAdminOrderList" resultMap="AdminOrderListResult">
+        <include refid="selectAdminOrderColumns"/>
+        <include refid="adminOrderFilter"/>
+        order by o.id desc
+    </select>
+    <select id="selectAdminOrderDetail" parameterType="Long" resultMap="AdminOrderDetailResult">
+        <include refid="selectAdminOrderColumns"/>
+        where o.id = #{orderId}
+    </select>
     <select id="countMakingOrders" parameterType="Long" resultType="int">
         select count(1) from biz_order
         where shop_id = #{shopId} and pay_status = 1 and order_status = 2

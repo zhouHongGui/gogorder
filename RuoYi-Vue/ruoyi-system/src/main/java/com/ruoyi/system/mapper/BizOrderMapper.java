@@ -5,6 +5,9 @@ import java.time.LocalDateTime;
 import java.util.List;
 import org.apache.ibatis.annotations.Param;
 import com.ruoyi.system.domain.BizOrder;
+import com.ruoyi.system.domain.dto.AdminOrderDetailView;
+import com.ruoyi.system.domain.dto.AdminOrderListItemView;
+import com.ruoyi.system.domain.dto.AdminOrderQuery;
 
 public interface BizOrderMapper
 {
@@ -47,6 +50,8 @@ public interface BizOrderMapper
             @Param("minId") Long minId, @Param("limit") int limit);
     int allocatePickupDisplay(@Param("shopId") Long shopId, @Param("pickupDate") LocalDate pickupDate);
     int selectPickupSeq(@Param("shopId") Long shopId, @Param("pickupDate") LocalDate pickupDate);
+    List<AdminOrderListItemView> selectAdminOrderList(AdminOrderQuery query);
+    AdminOrderDetailView selectAdminOrderDetail(@Param("orderId") Long orderId);
 
     // ===== 制作调度（串行队列，见 ProductionScheduleService / M15 §6.4）=====
     /** 制作中订单数（串行模式下应最多 1）。 */
