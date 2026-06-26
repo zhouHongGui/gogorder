@@ -14,7 +14,7 @@ import com.ruoyi.system.service.IBalanceService;
  * 余额支付编排服务（外层重试）。
  *
  * <p>真正的扣款逻辑在 {@link PaymentTransactionService#payAttempt}（独立事务）。
- * 本类负责生成「取餐核销令牌」{@code pickup_token} 并处理其唯一约束碰撞重试：
+ * 本类负责生成「出餐扫码令牌」{@code pickup_token} 并处理其唯一约束碰撞重试：
  * pickup_token 是 12 位随机串，靠 {@code uk_pickup_token} 唯一索引保证全局唯一，
  * 极小概率碰撞时换一个重试（最多 3 次）。
  *
@@ -27,7 +27,7 @@ import com.ruoyi.system.service.IBalanceService;
 public class BalanceServiceImpl implements IBalanceService
 {
     private static final Logger log = LoggerFactory.getLogger(BalanceServiceImpl.class);
-    /** 取餐令牌字符集：去除易混淆字符（0/O、1/I/L），避免口头/手抄混淆。 */
+    /** 出餐令牌字符集：去除易混淆字符（0/O、1/I/L），避免口头/手抄混淆。 */
     private static final String TOKEN_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
@@ -59,7 +59,7 @@ public class BalanceServiceImpl implements IBalanceService
                 // 仅当是 pickup_token 唯一约束碰撞且仍有重试机会时换号重试；其他唯一约束冲突直接抛出。
                 if (containsConstraint(e, "uk_pickup_token") && retry < 2)
                 {
-                    log.warn("取餐令牌碰撞，orderId={} retry={}", orderId, retry + 1);
+                    log.warn("出餐令牌碰撞，orderId={} retry={}", orderId, retry + 1);
                     continue;
                 }
                 throw e;
@@ -69,7 +69,7 @@ public class BalanceServiceImpl implements IBalanceService
     }
 
     /**
-     * 生成 12 位取餐核销令牌（从去混淆字符集中随机取）。
+     * 生成 12 位出餐扫码令牌（从去混淆字符集中随机取）。
      */
     private String generatePickupToken()
     {

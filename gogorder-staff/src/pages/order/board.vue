@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { onHide, onPullDownRefresh, onShow, onUnload } from '@dcloudio/uni-app'
-import { batchStartMake, cancelRefund, completeMake, getOrderBoard, startMake } from '../../api/order'
+import { onPullDownRefresh, onShow } from '@dcloudio/uni-app'
+import { cancelRefund, completeOrder, getOrderBoard, notifyPickup, startMake } from '../../api/order'
 import type { StaffOrderBoard, StaffOrderCard } from '../../types/order'
 import { getCurrentShop } from '../../utils/session'
 
@@ -21,7 +21,6 @@ const board = ref<StaffOrderBoard>({
 })
 const activeTab = ref<BoardTab>('pending')
 const currentShop = ref(getCurrentShop())
-let pollTimer: ReturnType<typeof setInterval> | undefined
 
 const tabs = computed(() => [
   { key: 'pending' as BoardTab, label: '待制作', count: board.value.pendingCount },
@@ -31,16 +30,11 @@ const tabs = computed(() => [
 ])
 
 const currentOrders = computed(() => board.value[activeTab.value])
-const canBatchStart = computed(() => activeTab.value === 'pending' && board.value.pending.length > 0)
 
 onShow(() => {
   currentShop.value = getCurrentShop()
   void loadBoard(true)
-  startPolling()
 })
-
-onHide(stopPolling)
-onUnload(stopPolling)
 
 onPullDownRefresh(async () => {
   try {
@@ -49,18 +43,6 @@ onPullDownRefresh(async () => {
     uni.stopPullDownRefresh()
   }
 })
-
-function startPolling() {
-  stopPolling()
-  pollTimer = setInterval(() => void loadBoard(false, true), 5000)
-}
-
-function stopPolling() {
-  if (pollTimer) {
-    clearInterval(pollTimer)
-    pollTimer = undefined
-  }
-}
 
 async function loadBoard(showLoading = false, silent = false) {
   if (loading.value) return
@@ -82,25 +64,15 @@ async function handleStart(order: StaffOrderCard) {
   await loadBoard()
 }
 
-function handleBatchStart() {
-  const orderIds = board.value.pending.map((item) => item.orderId)
-  if (!orderIds.length) return
-  uni.showModal({
-    title: '批量开始制作',
-    content: `确认开始制作 ${orderIds.length} 笔订单？`,
-    success: ({ confirm }) => {
-      if (!confirm) return
-      void batchStartMake(orderIds).then(async (result) => {
-        uni.showToast({ title: `已处理${result.count}单`, icon: 'success' })
-        await loadBoard()
-      })
-    }
-  })
+async function handleCompleteOrder(order: StaffOrderCard) {
+  await completeOrder(order.orderId)
+  uni.showToast({ title: '订单已完成', icon: 'success' })
+  await loadBoard()
 }
 
-async function handleComplete(order: StaffOrderCard) {
-  await completeMake(order.orderId)
-  uni.showToast({ title: '已进入待取餐', icon: 'success' })
+async function handleNotifyPickup(order: StaffOrderCard) {
+  await notifyPickup(order.orderId)
+  uni.showToast({ title: '已通知取餐', icon: 'success' })
   await loadBoard()
 }
 
@@ -125,8 +97,8 @@ function handleCancel(order: StaffOrderCard) {
   })
 }
 
-function openVerify() {
-  uni.navigateTo({ url: '/pages/order/verify' })
+function openScanOut() {
+  uni.navigateTo({ url: '/pages/order/scan-out' })
 }
 
 function goBack() {
@@ -173,10 +145,9 @@ function firstItems(order: StaffOrderCard) {
     </view>
 
     <view class="toolbar">
-      <text class="toolbar-text">{{ loading ? '刷新中...' : '每 5 秒自动刷新' }}</text>
+      <text class="toolbar-text">{{ loading ? '刷新中...' : '下拉刷新获取最新订单' }}</text>
       <view class="toolbar-buttons">
-        <text v-if="canBatchStart" class="toolbar-button" @click="handleBatchStart">批量开始</text>
-        <text class="toolbar-button dark" @click="openVerify">扫码核销</text>
+        <text class="toolbar-button dark" @click="openScanOut">出餐兜底</text>
       </view>
     </view>
 
@@ -219,8 +190,8 @@ function firstItems(order: StaffOrderCard) {
       <view class="card-actions">
         <text v-if="order.orderStatus === 1" class="action-chip danger-chip" @click="handleCancel(order)">取消退款</text>
         <text v-if="order.orderStatus === 1" class="action-chip primary-chip" @click="handleStart(order)">开始制作</text>
-        <text v-if="order.orderStatus === 2" class="action-chip primary-chip" @click="handleComplete(order)">制作完成</text>
-        <text v-if="order.orderStatus === 3" class="action-chip primary-chip" @click="openVerify">核销取餐</text>
+        <text v-if="order.orderStatus === 2" class="action-chip primary-chip" @click="handleNotifyPickup(order)">通知取餐</text>
+        <text v-if="order.orderStatus === 3" class="action-chip primary-chip" @click="handleCompleteOrder(order)">完成订单</text>
       </view>
     </view>
   </view>

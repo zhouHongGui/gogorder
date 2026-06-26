@@ -23,6 +23,7 @@ public class BOrderCardView
     private LocalDateTime acceptTime;
     private LocalDateTime makeStartTime;
     private LocalDateTime completeMakeTime;
+    private LocalDateTime estimatedReadyTime;
     private Boolean makeTimeout;
     private List<OrderItemView> items;
 
@@ -60,6 +61,8 @@ public class BOrderCardView
     public void setMakeStartTime(LocalDateTime makeStartTime) { this.makeStartTime = makeStartTime; }
     public LocalDateTime getCompleteMakeTime() { return completeMakeTime; }
     public void setCompleteMakeTime(LocalDateTime completeMakeTime) { this.completeMakeTime = completeMakeTime; }
+    public LocalDateTime getEstimatedReadyTime() { return estimatedReadyTime; }
+    public void setEstimatedReadyTime(LocalDateTime estimatedReadyTime) { this.estimatedReadyTime = estimatedReadyTime; }
     public Boolean getMakeTimeout() { return makeTimeout; }
     public void setMakeTimeout(Boolean makeTimeout) { this.makeTimeout = makeTimeout; }
     public List<OrderItemView> getItems() { return items; }

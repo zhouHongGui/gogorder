@@ -8,9 +8,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import com.alibaba.fastjson2.JSON;
 import com.ruoyi.common.constant.HttpStatus;
 import com.ruoyi.common.enums.OrderStatusEnum;
@@ -32,16 +36,18 @@ import com.ruoyi.system.mapper.BizOrderMapper;
 import com.ruoyi.system.mapper.ShopMapper;
 import com.ruoyi.system.service.IBOrderService;
 
-/** 门店员工端订单看板与制作核销服务。 */
+/** 门店员工端订单看板与制作流转服务。 */
 @Service
 public class BOrderServiceImpl implements IBOrderService
 {
+    private static final Logger log = LoggerFactory.getLogger(BOrderServiceImpl.class);
     private static final int BOARD_LIMIT = 300;
     private static final long MAKE_TIMEOUT_MINUTES = 15;
 
     @Autowired private BizOrderMapper bizOrderMapper;
     @Autowired private BizOrderItemMapper bizOrderItemMapper;
     @Autowired private ShopMapper shopMapper;
+    @Autowired private ProductionScheduleService productionScheduleService;
 
     @Override
     public BOrderBoardView getBoard(Long shopId)
@@ -101,7 +107,7 @@ public class BOrderServiceImpl implements IBOrderService
         BizOrder order = requireOrderInShop(shopId, orderId);
         Shop shop = requireShop(shopId);
         OrderDetailView view = buildDetailView(order, shop, bizOrderItemMapper.selectByOrderId(orderId));
-        // B 端不下发 pickupToken（敏感核销凭证，仅顾客端可见，防冒领）
+        // B 端详情不下发 pickupToken；该令牌只允许由出餐兜底扫码请求携带，避免被列表/详情泄露。
         view.setPickupToken(null);
         return view;
     }
@@ -115,49 +121,113 @@ public class BOrderServiceImpl implements IBOrderService
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public int batchStartMake(Long shopId, List<Long> orderIds)
+    public void notifyPickup(Long shopId, Long orderId)
     {
-        int count = 0;
-        for (Long orderId : orderIds)
+        int rows = bizOrderMapper.updateScanOut(orderId, shopId, LocalDateTime.now());
+        if (rows > 0)
         {
-            startMakeInternal(shopId, orderId);
-            count++;
+            registerAfterCommit(() -> productionScheduleService.onOrderScannedOut(shopId));
+            return;
         }
-        return count;
+
+        BizOrder order = requireOrderInShop(shopId, orderId);
+        if (Integer.valueOf(OrderStatusEnum.READY.getCode()).equals(order.getOrderStatus())
+                || Integer.valueOf(OrderStatusEnum.COMPLETED.getCode()).equals(order.getOrderStatus()))
+        {
+            return;
+        }
+        if (!Integer.valueOf(PayStatusEnum.PAY_SUCCESS.getCode()).equals(order.getPayStatus())
+                || !Integer.valueOf(OrderStatusEnum.MAKING.getCode()).equals(order.getOrderStatus()))
+        {
+            throw new ServiceException("订单状态不允许通知取餐", HttpStatus.CONFLICT);
+        }
+        throw new ServiceException("订单状态已变更，请刷新后重试", HttpStatus.CONFLICT);
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void completeMake(Long shopId, Long orderId)
+    public OrderDetailView scanOut(Long shopId, String code)
     {
-        int rows = bizOrderMapper.updateCompleteMake(orderId, shopId, LocalDateTime.now());
+        String normalizedCode = code == null ? "" : code.trim();
+        if (normalizedCode.isEmpty())
+        {
+            throw new ServiceException("订单号或取餐号不能为空", HttpStatus.BAD_REQUEST);
+        }
+        BizOrder order = bizOrderMapper.selectByScanOutCodeForUpdate(shopId, normalizedCode);
+        // 防探测：订单号/取餐号/token 不存在、错门店或状态不符时统一模糊提示。
+        if (order == null)
+        {
+            throw new ServiceException("订单号或取餐号无效或当前不可用", HttpStatus.BAD_REQUEST);
+        }
+        Integer status = order.getOrderStatus();
+        if (Integer.valueOf(OrderStatusEnum.READY.getCode()).equals(status)
+                || Integer.valueOf(OrderStatusEnum.COMPLETED.getCode()).equals(status))
+        {
+            return getDetail(shopId, order.getId());
+        }
+        if (!Integer.valueOf(OrderStatusEnum.MAKING.getCode()).equals(status))
+        {
+            throw new ServiceException("订单号或取餐号无效或当前不可用", HttpStatus.BAD_REQUEST);
+        }
+        int rows = bizOrderMapper.updateScanOut(order.getId(), shopId, LocalDateTime.now());
         if (rows == 0)
         {
-            ensureTransitionTarget(shopId, orderId, OrderStatusEnum.MAKING, "订单状态不允许制作完成");
+            throw new ServiceException("订单号或取餐号无效或当前不可用", HttpStatus.BAD_REQUEST);
         }
-    }
-
-    @Override
-    @Transactional(rollbackFor = Exception.class)
-    public OrderDetailView verify(Long shopId, String pickupToken)
-    {
-        String normalizedToken = pickupToken == null ? "" : pickupToken.trim();
-        if (normalizedToken.isEmpty())
-        {
-            throw new ServiceException("取餐码不能为空", HttpStatus.BAD_REQUEST);
-        }
-        BizOrder order = bizOrderMapper.selectByPickupTokenForUpdate(normalizedToken);
-        // 防探测：token 不存在 / 错门店 / 状态不符 统一模糊提示，避免枚举有效码或判断归属店
-        if (order == null || !Objects.equals(order.getShopId(), shopId))
-        {
-            throw new ServiceException("核销码无效或当前不可用", HttpStatus.BAD_REQUEST);
-        }
-        int rows = bizOrderMapper.updateVerify(order.getId(), shopId, LocalDateTime.now());
-        if (rows == 0)
-        {
-            throw new ServiceException("核销码无效或当前不可用", HttpStatus.BAD_REQUEST);
-        }
+        // 通知取餐后释放串行制作槽位，推进队列下一单进入制作。
+        registerAfterCommit(() -> productionScheduleService.onOrderScannedOut(shopId));
         return getDetail(shopId, order.getId());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void completeOrder(Long shopId, Long orderId)
+    {
+        int rows = bizOrderMapper.updateCompleteOrder(orderId, shopId, LocalDateTime.now());
+        if (rows > 0)
+        {
+            return;
+        }
+        BizOrder order = requireOrderInShop(shopId, orderId);
+        if (Integer.valueOf(OrderStatusEnum.COMPLETED.getCode()).equals(order.getOrderStatus()))
+        {
+            return;
+        }
+        if (!Integer.valueOf(PayStatusEnum.PAY_SUCCESS.getCode()).equals(order.getPayStatus())
+                || !Integer.valueOf(OrderStatusEnum.READY.getCode()).equals(order.getOrderStatus()))
+        {
+            throw new ServiceException("订单状态不允许完成", HttpStatus.CONFLICT);
+        }
+        throw new ServiceException("订单状态已变更，请刷新后重试", HttpStatus.CONFLICT);
+    }
+
+    /** 事务提交后执行（无事务上下文则立即执行）。用于触发调度，避免读到未提交状态。
+     *  调度异常隔离：不影响已成功提交的通知取餐（仅吞异常，兜底定时任务会补推进）。 */
+    private void registerAfterCommit(Runnable action)
+    {
+        Runnable safeAction = () -> {
+            try
+            {
+                action.run();
+            }
+            catch (Exception e)
+            {
+                log.warn("通知取餐后制作调度异常，已忽略（兜底任务会补）", e);
+            }
+        };
+        if (!TransactionSynchronizationManager.isSynchronizationActive())
+        {
+            safeAction.run();
+            return;
+        }
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization()
+        {
+            @Override
+            public void afterCommit()
+            {
+                safeAction.run();
+            }
+        });
     }
 
     private void startMakeInternal(Long shopId, Long orderId)
@@ -168,6 +238,11 @@ public class BOrderServiceImpl implements IBOrderService
         if (isFuturePreorder(order, makeWindowTime))
         {
             throw new ServiceException("预订单尚未到制作时间", HttpStatus.CONFLICT);
+        }
+        shopMapper.selectShopForUpdate(shopId);
+        if (bizOrderMapper.countMakingOrders(shopId) > 0)
+        {
+            throw new ServiceException("当前已有制作中订单，请先出餐后再开始下一单", HttpStatus.CONFLICT);
         }
         int rows = bizOrderMapper.updateStartMake(orderId, shopId, LocalDateTime.now());
         if (rows == 0)
@@ -254,6 +329,7 @@ public class BOrderServiceImpl implements IBOrderService
         view.setAcceptTime(order.getAcceptTime());
         view.setMakeStartTime(order.getMakeStartTime());
         view.setCompleteMakeTime(order.getCompleteMakeTime());
+        view.setEstimatedReadyTime(order.getEstimatedReadyTime());
         view.setMakeTimeout(isMakeTimeout(order, now));
         view.setItems(itemViews);
         return view;
@@ -297,6 +373,7 @@ public class BOrderServiceImpl implements IBOrderService
         view.setVerifyTime(order.getVerifyTime());
         view.setCancelTime(order.getCancelTime());
         view.setCancelReason(order.getCancelReason());
+        view.setEstimatedReadyTime(order.getEstimatedReadyTime());
         view.setCreateTime(order.getCreateTime());
         view.setItems(items.stream().map(this::buildItemView).toList());
         return view;

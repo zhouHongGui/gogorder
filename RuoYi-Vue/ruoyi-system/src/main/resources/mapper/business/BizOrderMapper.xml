@@ -26,6 +26,7 @@
         <result property="verifyTime" column="verify_time"/>
         <result property="cancelTime" column="cancel_time"/>
         <result property="cancelReason" column="cancel_reason"/>
+        <result property="estimatedReadyTime" column="estimated_ready_time"/>
         <result property="createTime" column="create_time"/>
         <result property="updateTime" column="update_time"/>
     </resultMap>
@@ -34,7 +35,7 @@
         select id, order_no, submit_key, pickup_token, pickup_display, pickup_date, user_id, shop_id,
                order_type, scheduled_pickup_time, order_status, pay_status, refund_status,
                product_amount, pack_fee, total_amount, remark, pay_time, accept_time, make_start_time,
-               complete_make_time, verify_time, cancel_time, cancel_reason, create_time, update_time
+               complete_make_time, verify_time, cancel_time, cancel_reason, estimated_ready_time, create_time, update_time
         from biz_order
     </sql>
 
@@ -167,9 +168,22 @@
         limit #{limit}
     </select>
 
-    <select id="selectByPickupTokenForUpdate" resultMap="BizOrderResult">
+    <select id="selectByScanOutCodeForUpdate" resultMap="BizOrderResult">
         <include refid="selectOrderColumns"/>
-        where pickup_token = #{pickupToken}
+        where shop_id = #{shopId}
+          and pay_status = 1
+          and (
+            pickup_token = #{code}
+            or order_no = #{code}
+            or (pickup_display = #{code} and order_status in (2, 3))
+          )
+        order by
+          case
+            when pickup_token = #{code} then 1
+            when order_no = #{code} then 2
+            else 3
+          end,
+          id desc
         limit 1
         for update
     </select>
@@ -183,21 +197,29 @@
           and pay_status = 1
     </update>
 
-    <update id="updateCompleteMake">
+    <update id="updateScanOut">
         update biz_order
-        set order_status = 3, complete_make_time = #{completeMakeTime}, update_time = #{completeMakeTime}
+        set order_status = 3, complete_make_time = #{scanOutTime}, update_time = #{scanOutTime}
         where id = #{id}
           and shop_id = #{shopId}
           and order_status = 2
           and pay_status = 1
     </update>
 
-    <update id="updateVerify">
+    <update id="updateCompleteOrder">
         update biz_order
-        set order_status = 4, verify_time = #{verifyTime}, update_time = #{verifyTime}
+        set order_status = 4, verify_time = #{completeTime}, update_time = #{completeTime}
         where id = #{id}
           and shop_id = #{shopId}
           and order_status = 3
+          and pay_status = 1
+    </update>
+
+    <update id="updateDailyFinalizeOrder">
+        update biz_order
+        set order_status = 4, verify_time = #{completeTime}, update_time = #{completeTime}
+        where id = #{id}
+          and order_status in (1, 2, 3)
           and pay_status = 1
     </update>
 
@@ -206,6 +228,26 @@
     <select id="selectPendingTimeoutOrders" resultMap="BizOrderResult">
         <include refid="selectOrderColumns"/>
         where order_status = 0 and pay_status = 0 and create_time &lt; #{deadline} and id &gt; #{minId}
+        order by id asc limit #{limit}
+    </select>
+    <!-- 待取餐超时自动完成：仅处理 READY(3)，按 complete_make_time 计算 4 小时。 -->
+    <select id="selectReadyTimeoutOrders" resultMap="BizOrderResult">
+        <include refid="selectOrderColumns"/>
+        where order_status = 3
+          and pay_status = 1
+          and complete_make_time is not null
+          and complete_make_time &lt;= #{deadline}
+          and id &gt; #{minId}
+        order by id asc limit #{limit}
+    </select>
+    <!-- 凌晨兜底：按 pickup_date 归属营业日，昨日及更早仍未完成的 1/2/3 统一归档为完成。 -->
+    <select id="selectDailyFinalizeOrders" resultMap="BizOrderResult">
+        <include refid="selectOrderColumns"/>
+        where order_status in (1, 2, 3)
+          and pay_status = 1
+          and pickup_date is not null
+          and pickup_date &lt; #{cutoffPickupDate}
+          and id &gt; #{minId}
         order by id asc limit #{limit}
     </select>
     <!-- 分配取餐号序号：首次 INSERT=1，之后 ON DUPLICATE KEY UPDATE 自增。
@@ -217,5 +259,34 @@
     <!-- 读取刚分配的取餐号序号（配合 allocatePickupDisplay 同事务使用）。 -->
     <select id="selectPickupSeq" resultType="int">
         select current_seq from pickup_sequence where shop_id = #{shopId} and pickup_date = #{pickupDate}
+    </select>
+    <!-- ===== 制作调度（串行队列，见 M15 §6.4）===== -->
+    <select id="countMakingOrders" parameterType="Long" resultType="int">
+        select count(1) from biz_order
+        where shop_id = #{shopId} and pay_status = 1 and order_status = 2
+    </select>
+    <select id="selectNextQueuedForUpdate" resultMap="BizOrderResult">
+        <include refid="selectOrderColumns"/>
+        where shop_id = #{shopId} and pay_status = 1 and order_status = 1
+          and (
+            order_type = 'NORMAL'
+            or (order_type = 'PREORDER' and scheduled_pickup_time is not null
+                and scheduled_pickup_time &lt;= date_add(now(), interval #{makeLeadMinutes} minute))
+          )
+        order by case when order_type = 'PREORDER' and scheduled_pickup_time is not null
+                      then scheduled_pickup_time else create_time end asc,
+                 id asc
+        limit 1
+        for update
+    </select>
+    <select id="sumOrderCups" parameterType="Long" resultType="int">
+        select coalesce(sum(quantity), 0) from biz_order_item where order_id = #{orderId}
+    </select>
+    <update id="updateEstimatedReadyTime">
+        update biz_order set estimated_ready_time = #{estimatedReadyTime}, update_time = sysdate()
+        where id = #{id}
+    </update>
+    <select id="selectShopIdsWithQueue" resultType="long">
+        select distinct shop_id from biz_order where pay_status = 1 and order_status = 1
     </select>
 </mapper>

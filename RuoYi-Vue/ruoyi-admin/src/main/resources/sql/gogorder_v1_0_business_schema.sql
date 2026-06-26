@@ -107,6 +107,7 @@ CREATE TABLE IF NOT EXISTS `shop` (
   `preorder_min_minutes` INT NOT NULL DEFAULT 30 COMMENT '最早可预约分钟数',
   `preorder_max_days` INT NOT NULL DEFAULT 7 COMMENT '最长可预约天数',
   `make_lead_minutes` INT NOT NULL DEFAULT 30 COMMENT '预订单提前进入制作窗口分钟数',
+  `minutes_per_cup` INT NOT NULL DEFAULT 3 COMMENT '单杯制作时间（分钟）',
   `status` TINYINT DEFAULT 1 COMMENT '0休息 1营业 2暂停接单',
   `notice` VARCHAR(500) DEFAULT '',
   `pack_fee` INT DEFAULT 100 COMMENT '包装费（分/杯）',
@@ -272,7 +273,7 @@ CREATE TABLE IF NOT EXISTS `biz_order` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `order_no` VARCHAR(32) NOT NULL COMMENT '订单号',
   `submit_key` VARCHAR(64) NOT NULL COMMENT '客户端提交幂等键',
-  `pickup_token` VARCHAR(12) DEFAULT NULL COMMENT '内部核销令牌（支付成功后生成）',
+  `pickup_token` VARCHAR(12) DEFAULT NULL COMMENT '出餐兜底扫码码（支付成功后生成）',
   `pickup_display` VARCHAR(5) DEFAULT NULL COMMENT '门店取餐日展示号（字母+3位数字，支付成功后生成）',
   `pickup_date` DATE DEFAULT NULL COMMENT '取餐日期，支付成功后生成',
   `user_id` BIGINT NOT NULL,
@@ -289,10 +290,11 @@ CREATE TABLE IF NOT EXISTS `biz_order` (
   `pay_time` DATETIME DEFAULT NULL,
   `accept_time` DATETIME DEFAULT NULL,
   `make_start_time` DATETIME DEFAULT NULL,
-  `complete_make_time` DATETIME DEFAULT NULL,
-  `verify_time` DATETIME DEFAULT NULL,
+  `complete_make_time` DATETIME DEFAULT NULL COMMENT '通知取餐时间（2→3，制作完成）',
+  `verify_time` DATETIME DEFAULT NULL COMMENT '完成/归档时间（3→4，历史字段名）',
   `cancel_time` DATETIME DEFAULT NULL,
   `cancel_reason` VARCHAR(200) DEFAULT '',
+  `estimated_ready_time` DATETIME DEFAULT NULL COMMENT '预计取餐时间（支付时按串行队列估算）',
   `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
@@ -306,7 +308,9 @@ CREATE TABLE IF NOT EXISTS `biz_order` (
   KEY `idx_shop_pay_time` (`shop_id`, `pay_status`, `pay_time`, `id`),
   KEY `idx_shop_scheduled_pickup` (`shop_id`, `scheduled_pickup_time`),
   KEY `idx_create_time` (`create_time`),
-  KEY `idx_timeout_sweep` (`order_status`, `pay_status`, `id`, `create_time`)
+  KEY `idx_timeout_sweep` (`order_status`, `pay_status`, `id`, `create_time`),
+  KEY `idx_ready_timeout` (`order_status`, `pay_status`, `complete_make_time`, `id`),
+  KEY `idx_daily_finalize` (`order_status`, `pay_status`, `pickup_date`, `id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单';
 
 CREATE TABLE IF NOT EXISTS `biz_order_item` (
@@ -341,4 +345,34 @@ SELECT '待支付订单超时取消', 'SYSTEM', 'paymentTimeoutTask.cancelTimeou
        '3', '1', '0', 'admin', SYSDATE(), '每分钟取消超过15分钟仍未支付的订单'
 WHERE NOT EXISTS (
   SELECT 1 FROM `sys_job` WHERE `invoke_target` = 'paymentTimeoutTask.cancelTimeoutOrders'
+);
+
+INSERT INTO `sys_job` (
+  `job_name`, `job_group`, `invoke_target`, `cron_expression`, `misfire_policy`,
+  `concurrent`, `status`, `create_by`, `create_time`, `remark`
+)
+SELECT '制作调度兜底扫描', 'SYSTEM', 'productionSweepTask.sweep', '0 * * * * ?',
+       '3', '1', '0', 'admin', SYSDATE(), '每分钟串行推进队列订单进入制作（M15 §6.4）'
+WHERE NOT EXISTS (
+  SELECT 1 FROM `sys_job` WHERE `invoke_target` = 'productionSweepTask.sweep'
+);
+
+INSERT INTO `sys_job` (
+  `job_name`, `job_group`, `invoke_target`, `cron_expression`, `misfire_policy`,
+  `concurrent`, `status`, `create_by`, `create_time`, `remark`
+)
+SELECT '待取餐超时自动完成', 'SYSTEM', 'pickupTimeoutTask.completeTimeoutReadyOrders', '0 * * * * ?',
+       '3', '1', '0', 'admin', SYSDATE(), '每分钟将待取餐超过4小时订单自动归档完成（M15 §6.4）'
+WHERE NOT EXISTS (
+  SELECT 1 FROM `sys_job` WHERE `invoke_target` = 'pickupTimeoutTask.completeTimeoutReadyOrders'
+);
+
+INSERT INTO `sys_job` (
+  `job_name`, `job_group`, `invoke_target`, `cron_expression`, `misfire_policy`,
+  `concurrent`, `status`, `create_by`, `create_time`, `remark`
+)
+SELECT '每日订单兜底归档', 'SYSTEM', 'dailyFinalizeTask.finalizePreviousDayOrders', '0 0 4 * * ?',
+       '3', '1', '0', 'admin', SYSDATE(), '每天凌晨4点将昨日及更早未完成订单归档完成（M15 §6.4）'
+WHERE NOT EXISTS (
+  SELECT 1 FROM `sys_job` WHERE `invoke_target` = 'dailyFinalizeTask.finalizePreviousDayOrders'
 );

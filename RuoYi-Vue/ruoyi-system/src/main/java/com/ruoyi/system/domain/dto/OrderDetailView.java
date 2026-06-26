@@ -30,15 +30,16 @@ public class OrderDetailView
     private Integer totalAmount;           // 应付合计（分）
     private String remark;                 // 用户备注
     private String pickupDisplay;          // 取餐展示号
-    private String pickupToken;            // 取餐核销令牌
+    private String pickupToken;            // 出餐兜底扫码码（B端详情默认不下发）
     private LocalDate pickupDate;          // 取餐归属日期
     private Integer queueAheadOrders;      // 当前订单前方制作订单数
     private Integer queueAheadCups;        // 当前订单前方制作杯数
+    private LocalDateTime estimatedReadyTime; // 预计取餐时间（按串行队列估算）
     private LocalDateTime payTime;         // 支付时间
     private LocalDateTime acceptTime;      // 接单时间
     private LocalDateTime makeStartTime;   // 开始制作时间
-    private LocalDateTime completeMakeTime;// 制作完成时间
-    private LocalDateTime verifyTime;      // 核销时间
+    private LocalDateTime completeMakeTime;// 出餐/制作完成时间
+    private LocalDateTime verifyTime;      // 完成/归档时间（历史字段名）
     private LocalDateTime cancelTime;      // 取消时间
     private String cancelReason;           // 取消原因
     private LocalDateTime createTime;      // 下单时间
@@ -92,6 +93,8 @@ public class OrderDetailView
     public void setQueueAheadOrders(Integer queueAheadOrders) { this.queueAheadOrders = queueAheadOrders; }
     public Integer getQueueAheadCups() { return queueAheadCups; }
     public void setQueueAheadCups(Integer queueAheadCups) { this.queueAheadCups = queueAheadCups; }
+    public LocalDateTime getEstimatedReadyTime() { return estimatedReadyTime; }
+    public void setEstimatedReadyTime(LocalDateTime estimatedReadyTime) { this.estimatedReadyTime = estimatedReadyTime; }
     public LocalDateTime getPayTime() { return payTime; }
     public void setPayTime(LocalDateTime payTime) { this.payTime = payTime; }
     public LocalDateTime getAcceptTime() { return acceptTime; }

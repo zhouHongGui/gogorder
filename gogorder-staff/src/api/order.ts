@@ -23,22 +23,22 @@ export const startMake = (orderId: number) => request<void>({
   data: {}
 })
 
-export const batchStartMake = (orderIds: number[]) => request<{ count: number }>({
-  url: '/api/b/order/batch-start-make',
-  method: 'PUT',
-  data: { orderIds }
-})
-
-export const completeMake = (orderId: number) => request<void>({
-  url: `/api/b/order/${orderId}/complete-make`,
+export const notifyPickup = (orderId: number) => request<void>({
+  url: `/api/b/order/${orderId}/notify-pickup`,
   method: 'PUT',
   data: {}
 })
 
-export const verifyOrder = (pickupToken: string) => request<StaffOrderDetail>({
-  url: '/api/b/order/verify',
+export const scanOutOrder = (code: string) => request<StaffOrderDetail>({
+  url: '/api/b/order/scan-out',
   method: 'PUT',
-  data: { pickupToken }
+  data: { code }
+})
+
+export const completeOrder = (orderId: number) => request<void>({
+  url: `/api/b/order/${orderId}/complete`,
+  method: 'PUT',
+  data: {}
 })
 
 export const cancelRefund = (orderId: number, reason: string) => request<void>({

@@ -120,6 +120,7 @@ public class ShopServiceImpl implements IShopService
         shop.setPreorderMinMinutes(StringUtils.nvl(shop.getPreorderMinMinutes(), 30));
         shop.setPreorderMaxDays(StringUtils.nvl(shop.getPreorderMaxDays(), 7));
         shop.setMakeLeadMinutes(StringUtils.nvl(shop.getMakeLeadMinutes(), 30));
+        shop.setMinutesPerCup(StringUtils.nvl(shop.getMinutesPerCup(), 3));
         shop.setPackFee(StringUtils.nvl(shop.getPackFee(), 100));
         shop.setSortOrder(StringUtils.nvl(shop.getSortOrder(), 0));
         shop.setDelFlag(0);

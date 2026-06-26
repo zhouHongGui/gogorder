@@ -9,7 +9,7 @@ public interface IBOrderService
     BOrderBoardView getBoard(Long shopId);
     OrderDetailView getDetail(Long shopId, Long orderId);
     void startMake(Long shopId, Long orderId);
-    int batchStartMake(Long shopId, java.util.List<Long> orderIds);
-    void completeMake(Long shopId, Long orderId);
-    OrderDetailView verify(Long shopId, String pickupToken);
+    void notifyPickup(Long shopId, Long orderId);
+    OrderDetailView scanOut(Long shopId, String code);
+    void completeOrder(Long shopId, Long orderId);
 }

@@ -55,7 +55,7 @@ import com.ruoyi.system.service.IOrderLabelPrintService;
  *
  * <h3>取餐号格式</h3>
  * 展示号 {@code pickup_display} 为「字母+3位数字」（A001~A999, B001~B999, …, Z999），
- * 按门店+日期递增（见 {@code pickup_sequence} 表）；另存 {@code pickup_token}（12位全局随机）用于扫码核销。
+ * 按门店+日期递增（见 {@code pickup_sequence} 表）；另存 {@code pickup_token}（12位全局随机）用于出餐兜底扫码。
  *
  * @see BalanceServiceImpl 外层重试编排（token 碰撞重试）
  * @see OrderCancelServiceImpl 取消退款（反向操作）
@@ -74,6 +74,7 @@ public class PaymentTransactionService
     @Autowired private BalanceLedgerMapper balanceLedgerMapper;
     @Autowired private PaymentLedgerMapper paymentLedgerMapper;
     @Autowired private IOrderLabelPrintService orderLabelPrintService;
+    @Autowired private ProductionScheduleService productionScheduleService;
     /** 订单可调阈值（支付超时分钟数等），见 {@link GogorderOrderProperties}。 */
     @Autowired private GogorderOrderProperties orderProperties;
 
@@ -85,7 +86,7 @@ public class PaymentTransactionService
      *
      * @param userId      当前用户
      * @param orderId     待支付订单
-     * @param pickupToken 由 {@link BalanceServiceImpl} 生成的取餐核销令牌（12位随机），支付成功时写入订单
+     * @param pickupToken 由 {@link BalanceServiceImpl} 生成的出餐扫码令牌（12位随机），支付成功时写入订单
      * @return 支付结果（订单号、取餐展示号、扣款后余额）
      * @throws ServiceException 订单不存在/越权、状态不允许、已超时、余额不足、状态已变更 等
      */
@@ -209,6 +210,7 @@ public class PaymentTransactionService
         if (!TransactionSynchronizationManager.isSynchronizationActive())
         {
             orderLabelPrintService.printPaidOrderAsync(orderId);
+            safeScheduleProduction(orderId);
             return;
         }
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization()
@@ -217,8 +219,26 @@ public class PaymentTransactionService
             public void afterCommit()
             {
                 orderLabelPrintService.printPaidOrderAsync(orderId);
+                // 支付成功后：算预计取餐时间 + 按串行队列推进制作（M15 §6.4）
+                safeScheduleProduction(orderId);
             }
         });
+    }
+
+    /**
+     * 调度异常隔离：制作调度失败不影响已成功提交的支付/打印（事务已不可回滚），
+     * 仅记日志，由兜底定时任务补推进。
+     */
+    private void safeScheduleProduction(Long orderId)
+    {
+        try
+        {
+            productionScheduleService.onOrderPaid(orderId);
+        }
+        catch (Exception e)
+        {
+            log.error("支付后制作调度异常，已忽略（兜底任务会补） orderId={}", orderId, e);
+        }
     }
 
     /**

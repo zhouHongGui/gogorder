@@ -31,7 +31,7 @@
       }
     },
     {
-      "path": "pages/order/verify",
+      "path": "pages/order/scan-out",
       "style": {
         "navigationStyle": "custom",
         "backgroundColor": "#f7f4ee"

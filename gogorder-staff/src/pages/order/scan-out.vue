@@ -1,36 +1,48 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { verifyOrder } from '../../api/order'
+import { scanOutOrder } from '../../api/order'
 import type { StaffOrderDetail } from '../../types/order'
 import { getCurrentShop } from '../../utils/session'
 
-const pickupToken = ref('')
+// 出餐兜底页：扫码可读 pickup_token；手动输入使用订单号/取餐号。
+const orderCode = ref('')
 const submitting = ref(false)
 const result = ref<StaffOrderDetail | null>(null)
 const currentShop = ref(getCurrentShop())
+const isH5Runtime = ref(false)
+
+// #ifdef H5
+isH5Runtime.value = true
+// #endif
 
 const resultTitle = computed(() => {
   if (!result.value) return ''
-  return `${result.value.pickupDisplay || '取餐'} · 已核销`
+  return `${result.value.pickupDisplay || '取餐'} · 已通知`
 })
 
-async function submitVerify() {
-  const token = pickupToken.value.trim()
-  if (!token) {
-    uni.showToast({ title: '请输入或扫描取餐码', icon: 'none' })
+async function submitScanOut() {
+  const code = orderCode.value.trim()
+  if (!code) {
+    uni.showToast({ title: '请输入订单号或取餐号', icon: 'none' })
     return
   }
   submitting.value = true
   try {
-    result.value = await verifyOrder(token)
-    pickupToken.value = ''
-    uni.showToast({ title: '核销成功', icon: 'success' })
+    result.value = await scanOutOrder(code)
+    orderCode.value = ''
+    uni.showToast({ title: '已通知取餐', icon: 'success' })
   } finally {
     submitting.value = false
   }
 }
 
 function scanCode() {
+  // #ifdef H5
+  uni.showToast({ title: 'H5 暂不支持扫码，请输入订单号', icon: 'none' })
+  return
+  // #endif
+
+  // #ifndef H5
   if (typeof uni.scanCode !== 'function') {
     uni.showToast({ title: '当前环境不支持扫码，请手动输入', icon: 'none' })
     return
@@ -38,18 +50,19 @@ function scanCode() {
   uni.scanCode({
     scanType: ['qrCode', 'barCode'],
     success: (res) => {
-      pickupToken.value = String(res.result || '').trim()
-      void submitVerify()
+      orderCode.value = String(res.result || '').trim()
+      void submitScanOut()
     },
     fail: () => {
       uni.showToast({ title: '扫码失败，请重试或手动输入', icon: 'none' })
     }
   })
+  // #endif
 }
 
 function resetResult() {
   result.value = null
-  pickupToken.value = ''
+  orderCode.value = ''
 }
 
 function backToBoard() {
@@ -65,18 +78,19 @@ function formatMoney(value?: number) {
   <view class="safe-page verify-page">
     <view class="hero-card">
       <view>
-        <text class="eyebrow">取餐核销</text>
+        <text class="eyebrow">出餐兜底</text>
         <text class="hero-title">{{ currentShop?.shopName || '当前门店' }}</text>
       </view>
       <text class="back-link" @click="backToBoard">返回</text>
     </view>
 
     <view class="verify-card">
-      <text class="card-title">扫码或输入取餐码</text>
-      <input v-model="pickupToken" class="token-input" maxlength="64" placeholder="请输入 pickup token / 二维码内容" />
+      <text class="card-title">扫码或输入订单号</text>
+      <text v-if="isH5Runtime" class="h5-tip">当前是 H5 调试环境，浏览器扫码能力受限。请手动输入订单号或取餐号；微信小程序端仍可直接扫码。</text>
+      <input v-model="orderCode" class="token-input" maxlength="64" placeholder="请输入订单号 / 取餐号" />
       <view class="button-row">
-        <button class="scan-button" @click="scanCode">扫码</button>
-        <button class="submit-button" :loading="submitting" @click="submitVerify">确认核销</button>
+        <button class="scan-button" :class="{ disabled: isH5Runtime }" @click="scanCode">{{ isH5Runtime ? 'H5不可扫码' : '扫码' }}</button>
+        <button class="submit-button" :loading="submitting" @click="submitScanOut">通知取餐</button>
       </view>
     </view>
 
@@ -95,7 +109,7 @@ function formatMoney(value?: number) {
           <text class="item-price">{{ formatMoney(item.subtotal) }}</text>
         </view>
       </view>
-      <button class="next-button" @click="resetResult">继续核销</button>
+      <button class="next-button" @click="resetResult">继续出餐</button>
     </view>
   </view>
 </template>
@@ -167,6 +181,17 @@ function formatMoney(value?: number) {
   font-weight: 800;
 }
 
+.h5-tip {
+  display: block;
+  margin-top: 16rpx;
+  padding: 18rpx 20rpx;
+  border-radius: 22rpx;
+  background: #fff4de;
+  color: #9a622d;
+  font-size: 23rpx;
+  line-height: 1.5;
+}
+
 .token-input {
   height: 92rpx;
   margin-top: 22rpx;
@@ -198,6 +223,10 @@ function formatMoney(value?: number) {
   flex: 1;
   background: #f1eadf;
   color: #8f6940;
+}
+
+.scan-button.disabled {
+  opacity: .72;
 }
 
 .submit-button {

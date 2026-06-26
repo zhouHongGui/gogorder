@@ -97,7 +97,7 @@ function shopInitial(name?: string) {
       </view>
       <text class="eyebrow">AUTHORIZED SHOPS</text>
       <text class="hero-title">选择操作门店</text>
-      <text class="hero-desc">选择后，订单看板、核销和门店操作都会切换到对应门店。</text>
+      <text class="hero-desc">选择后，订单看板、出餐和门店操作都会切换到对应门店。</text>
     </view>
 
     <view class="list-wrap">

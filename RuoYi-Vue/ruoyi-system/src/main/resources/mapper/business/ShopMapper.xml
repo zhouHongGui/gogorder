@@ -21,6 +21,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="preorderMinMinutes" column="preorder_min_minutes" />
         <result property="preorderMaxDays" column="preorder_max_days" />
         <result property="makeLeadMinutes" column="make_lead_minutes" />
+        <result property="minutesPerCup" column="minutes_per_cup" />
         <result property="status" column="status" />
         <result property="notice" column="notice" />
         <result property="packFee" column="pack_fee" />
@@ -33,7 +34,8 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     <sql id="selectShopVo">
         select id, shop_code, name, image, phone, province, city, district, address,
                longitude, latitude, open_time, close_time, preorder_min_minutes,
-               preorder_max_days, make_lead_minutes, status, notice, pack_fee,
+               preorder_max_days, make_lead_minutes, minutes_per_cup,
+               status, notice, pack_fee,
                sort_order, del_flag, create_time, update_time
         from shop
     </sql>
@@ -92,6 +94,11 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <include refid="selectShopVo"/>
         where id = #{id} and del_flag = 0
     </select>
+    <select id="selectShopForUpdate" parameterType="Long" resultMap="ShopResult">
+        <include refid="selectShopVo"/>
+        where id = #{id} and del_flag = 0
+        for update
+    </select>
 
     <select id="selectShopByIds" resultMap="ShopResult">
         <include refid="selectShopVo"/>
@@ -111,12 +118,14 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         insert into shop (
             shop_code, name, image, phone, province, city, district, address,
             longitude, latitude, open_time, close_time, preorder_min_minutes,
-            preorder_max_days, make_lead_minutes, status, notice, pack_fee,
+            preorder_max_days, make_lead_minutes, minutes_per_cup,
+            status, notice, pack_fee,
             sort_order, del_flag, create_time
         ) values (
             #{shopCode}, #{name}, #{image}, #{phone}, #{province}, #{city}, #{district}, #{address},
             #{longitude}, #{latitude}, #{openTime}, #{closeTime}, #{preorderMinMinutes},
-            #{preorderMaxDays}, #{makeLeadMinutes}, #{status}, #{notice}, #{packFee},
+            #{preorderMaxDays}, #{makeLeadMinutes}, #{minutesPerCup},
+            #{status}, #{notice}, #{packFee},
             #{sortOrder}, #{delFlag}, sysdate()
         )
     </insert>
@@ -138,6 +147,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
             <if test="preorderMinMinutes != null">preorder_min_minutes = #{preorderMinMinutes},</if>
             <if test="preorderMaxDays != null">preorder_max_days = #{preorderMaxDays},</if>
             <if test="makeLeadMinutes != null">make_lead_minutes = #{makeLeadMinutes},</if>
+            <if test="minutesPerCup != null">minutes_per_cup = #{minutesPerCup},</if>
             <if test="status != null">status = #{status},</if>
             <if test="notice != null">notice = #{notice},</if>
             <if test="packFee != null">pack_fee = #{packFee},</if>

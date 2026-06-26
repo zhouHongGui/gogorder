@@ -16,7 +16,7 @@ import java.time.LocalDateTime;
  * <h3>关键设计</h3>
  * <ul>
  *   <li>下单幂等：{@code (userId, submitKey)} 唯一，防重复下单。</li>
- *   <li>取餐码双字段：{@code pickupToken}(全局唯一核销码) + {@code pickupDisplay}(门店日内展示号)。</li>
+ *   <li>取餐码双字段：{@code pickupToken}(出餐兜底扫码码) + {@code pickupDisplay}(门店日内展示号)。</li>
  *   <li>金额单位：分（int）。{@code totalAmount = productAmount + packFee}。</li>
  *   <li>表名用 {@code biz_order} 而非 {@code order}（MySQL 保留字）。</li>
  * </ul>
@@ -29,7 +29,7 @@ public class BizOrder
     private String orderNo;
     /** 下单幂等键（客户端 submitToken），配合 userId 唯一，防重复下单。 */
     private String submitKey;
-    /** 取餐核销令牌（12位随机，全局唯一），支付成功后生成，门店扫码核销用。 */
+    /** 出餐兜底扫码码（12位随机，全局唯一），支付成功后生成，打印在商品标签上。 */
     private String pickupToken;
     /** 取餐展示号（字母+3位数字，门店日内递增），用户叫号展示用。 */
     private String pickupDisplay;
@@ -65,12 +65,14 @@ public class BizOrder
     private LocalDateTime makeStartTime;
     /** 制作完成时间。 */
     private LocalDateTime completeMakeTime;
-    /** 核销时间（用户取餐扫码核销）。 */
+    /** 完成/归档时间（历史字段 verify_time 复用，不再表示扫码核销）。 */
     private LocalDateTime verifyTime;
     /** 取消时间。 */
     private LocalDateTime cancelTime;
     /** 取消原因。 */
     private String cancelReason;
+    /** 预计取餐时间（支付时按串行队列估算），供顾客/看板展示。 */
+    private LocalDateTime estimatedReadyTime;
     /** 创建（下单）时间，支付超时判断以此为基准。 */
     private LocalDateTime createTime;
     /** 更新时间。 */
@@ -124,6 +126,8 @@ public class BizOrder
     public void setCancelTime(LocalDateTime cancelTime) { this.cancelTime = cancelTime; }
     public String getCancelReason() { return cancelReason; }
     public void setCancelReason(String cancelReason) { this.cancelReason = cancelReason; }
+    public LocalDateTime getEstimatedReadyTime() { return estimatedReadyTime; }
+    public void setEstimatedReadyTime(LocalDateTime estimatedReadyTime) { this.estimatedReadyTime = estimatedReadyTime; }
     public LocalDateTime getCreateTime() { return createTime; }
     public void setCreateTime(LocalDateTime createTime) { this.createTime = createTime; }
     public LocalDateTime getUpdateTime() { return updateTime; }

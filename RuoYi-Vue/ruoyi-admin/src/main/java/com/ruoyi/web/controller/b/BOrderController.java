@@ -19,13 +19,12 @@ import com.ruoyi.common.core.domain.AjaxResult;
 import com.ruoyi.common.enums.BusinessType;
 import com.ruoyi.common.enums.LimitType;
 import com.ruoyi.common.exception.ServiceException;
-import com.ruoyi.system.domain.dto.BOrderBatchStartMakeRequest;
 import com.ruoyi.system.domain.dto.BOrderCancelRefundRequest;
-import com.ruoyi.system.domain.dto.BOrderVerifyRequest;
+import com.ruoyi.system.domain.dto.BOrderScanOutRequest;
 import com.ruoyi.system.service.IBOrderService;
 import com.ruoyi.system.service.IOrderCancelService;
 
-/** 门店员工端订单看板、制作与核销接口。 */
+/** 门店员工端订单看板、制作出餐与完成接口。 */
 @RestController
 @RequestMapping("/api/b/order")
 public class BOrderController
@@ -65,29 +64,29 @@ public class BOrderController
         return AjaxResult.success();
     }
 
-    @Log(title = "员工端批量开始制作", businessType = BusinessType.UPDATE)
-    @PutMapping("/batch-start-make")
-    public AjaxResult batchStartMake(@RequestHeader("X-Shop-Id") Long shopId,
-            @Validated @RequestBody BOrderBatchStartMakeRequest request)
+    @Log(title = "员工端通知取餐", businessType = BusinessType.UPDATE)
+    @PutMapping("/{id}/notify-pickup")
+    public AjaxResult notifyPickup(@RequestHeader("X-Shop-Id") Long shopId, @PathVariable Long id)
     {
-        return AjaxResult.success(Map.of("count", bOrderService.batchStartMake(shopId, request.getOrderIds())));
-    }
-
-    @Log(title = "员工端制作完成", businessType = BusinessType.UPDATE)
-    @PutMapping("/{id}/complete-make")
-    public AjaxResult completeMake(@RequestHeader("X-Shop-Id") Long shopId, @PathVariable Long id)
-    {
-        bOrderService.completeMake(shopId, id);
+        bOrderService.notifyPickup(shopId, id);
         return AjaxResult.success();
     }
 
-    @RateLimiter(key = "staff:order:verify:", time = 60, count = 10, limitType = LimitType.IP)
-    @Log(title = "员工端核销取餐", businessType = BusinessType.UPDATE)
-    @PutMapping("/verify")
-    public AjaxResult verify(@RequestHeader("X-Shop-Id") Long shopId,
-            @Validated @RequestBody BOrderVerifyRequest request)
+    @RateLimiter(key = "staff:order:scan-out:", time = 60, count = 10, limitType = LimitType.IP)
+    @Log(title = "员工端出餐兜底", businessType = BusinessType.UPDATE)
+    @PutMapping("/scan-out")
+    public AjaxResult scanOut(@RequestHeader("X-Shop-Id") Long shopId,
+            @Validated @RequestBody BOrderScanOutRequest request)
     {
-        return AjaxResult.success(bOrderService.verify(shopId, request.getPickupToken()));
+        return AjaxResult.success(bOrderService.scanOut(shopId, request.getEffectiveCode()));
+    }
+
+    @Log(title = "员工端完成订单", businessType = BusinessType.UPDATE)
+    @PutMapping("/{id}/complete")
+    public AjaxResult completeOrder(@RequestHeader("X-Shop-Id") Long shopId, @PathVariable Long id)
+    {
+        bOrderService.completeOrder(shopId, id);
+        return AjaxResult.success();
     }
 
     @Log(title = "员工端取消退款", businessType = BusinessType.UPDATE)

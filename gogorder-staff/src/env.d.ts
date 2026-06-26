@@ -1,2 +1,12 @@
 /// <reference types="vite/client" />
 /// <reference types="@dcloudio/types" />
+
+interface ImportMetaEnv {
+  readonly VITE_API_BASE_URL?: string
+  readonly VITE_H5_API_BASE_URL?: string
+  readonly VITE_PROXY_TARGET?: string
+}
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv
+}

@@ -122,7 +122,7 @@ public class OrderLabelPrintServiceImpl implements IOrderLabelPrintService // �
             }
             if (StringUtils.isBlank(order.getPickupToken()))
             {
-                log.warn("支付成功订单缺少核销码，主标签将不打印二维码 orderId={} orderNo={} shopId={}",
+                log.warn("支付成功订单缺少出餐码，主标签将不打印二维码 orderId={} orderNo={} shopId={}",
                         orderId, order.getOrderNo(), order.getShopId());
             }
             List<ShopLabelPrinter> printers = shopLabelPrinterMapper.selectEnabledByShopId(order.getShopId()); // 查询门店启用的打印机
@@ -492,9 +492,9 @@ public class OrderLabelPrintServiceImpl implements IOrderLabelPrintService // �
             contentMaxY = bottomY - 18; // 内容区上界比底部行再往上 18 点，避免与底部行重叠
         }
 
-        private void addFixedPickupQr(String pickupToken) // 在备注下方的固定区域添加小尺寸核销二维码
+        private void addFixedPickupQr(String pickupToken) // 在备注下方的固定区域添加小尺寸出餐二维码
         {
-            if (StringUtils.isBlank(pickupToken)) // 历史订单或异常订单可能没有核销令牌
+            if (StringUtils.isBlank(pickupToken)) // 历史订单或异常订单可能没有出餐令牌
             {
                 return; // 不输出空二维码
             }
@@ -502,7 +502,7 @@ public class OrderLabelPrintServiceImpl implements IOrderLabelPrintService // �
             int qrY = Math.max(LABEL_MARGIN, bottomY - LABEL_QR_RESERVED_SIZE - 8); // 固定在底部时间行上方
             content.append("<QR x=\"").append(qrX).append("\" y=\"").append(qrY)
                     .append("\" e=\"L\" w=\"").append(LABEL_QR_MODULE_WIDTH).append("\">")
-                    .append(escapeXml(pickupToken)) // 二维码只编码原始 pickup_token，扫码结果可直接提交核销接口
+                    .append(escapeXml(pickupToken)) // 二维码只编码原始 pickup_token，扫码结果可直接提交出餐接口
                     .append("</QR>");
             contentMaxY = Math.min(contentMaxY, qrY - LABEL_NORMAL_LINE_HEIGHT); // 保证最后一行正文不会伸入二维码区域
         }

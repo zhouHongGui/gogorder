@@ -97,8 +97,8 @@ function openBoard() {
   uni.navigateTo({ url: '/pages/order/board' })
 }
 
-function openVerify() {
-  uni.navigateTo({ url: '/pages/order/verify' })
+function openScanOut() {
+  uni.navigateTo({ url: '/pages/order/scan-out' })
 }
 
 function showPending(feature: string) {
@@ -162,7 +162,7 @@ function showPending(feature: string) {
             <text class="mini-value">{{ orderCounts.making }}</text>
             <text class="mini-label">制作中</text>
           </view>
-          <view class="mini-stat warm" @click="openVerify">
+          <view class="mini-stat warm" @click="openScanOut">
             <text class="mini-value">{{ orderCounts.waiting }}</text>
             <text class="mini-label">待取餐</text>
           </view>
@@ -192,19 +192,19 @@ function showPending(feature: string) {
             <view class="receipt-line short" />
           </view>
           <text class="big-action-title">制作看板</text>
-          <text class="big-action-desc">订单流转、批量开始、取消退款</text>
+          <text class="big-action-desc">串行制作、出餐、取消退款</text>
           <text class="action-arrow">进入 ›</text>
         </view>
-        <view class="big-action verify-action" @click="openVerify">
+        <view class="big-action verify-action" @click="openScanOut">
           <view class="action-icon verify-icon">
             <view class="scan-corner corner-a" />
             <view class="scan-corner corner-b" />
             <view class="scan-corner corner-c" />
             <view class="scan-corner corner-d" />
           </view>
-          <text class="big-action-title">扫码核销</text>
-          <text class="big-action-desc">扫描小票二维码，完成取餐交付</text>
-          <text class="action-arrow">去核销 ›</text>
+          <text class="big-action-title">出餐兜底</text>
+          <text class="big-action-desc">扫码或手输订单号，进入待取餐</text>
+          <text class="action-arrow">去处理 ›</text>
         </view>
       </view>
 

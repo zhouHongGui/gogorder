@@ -17,6 +17,9 @@ public interface ShopMapper
 
     public Shop selectShopById(Long id);
 
+    /** 锁门店行（FOR UPDATE），用于制作调度串行化同店推进，防并发推进多单。 */
+    public Shop selectShopForUpdate(@Param("id") Long id);
+
     public List<Shop> selectShopByIds(@Param("ids") List<Long> ids);
 
     public Shop selectShopByCode(String shopCode);

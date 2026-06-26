@@ -80,6 +80,10 @@ public class Shop extends BaseEntity
     @Min(value = 0, message = "制作提前分钟数不能小于0")
     private Integer makeLeadMinutes;
 
+    /** 单杯制作时间（分钟），用于估算预计取餐时间，默认 3。 */
+    @Min(value = 1, message = "单杯制作时间不能小于1分钟")
+    private Integer minutesPerCup;
+
     @Min(value = 0, message = "门店状态不正确")
     @Max(value = 2, message = "门店状态不正确")
     private Integer status;
@@ -253,6 +257,16 @@ public class Shop extends BaseEntity
     public void setMakeLeadMinutes(Integer makeLeadMinutes)
     {
         this.makeLeadMinutes = makeLeadMinutes;
+    }
+
+    public Integer getMinutesPerCup()
+    {
+        return minutesPerCup;
+    }
+
+    public void setMinutesPerCup(Integer minutesPerCup)
+    {
+        this.minutesPerCup = minutesPerCup;
     }
 
     public Integer getStatus()

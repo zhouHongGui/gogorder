@@ -6,8 +6,11 @@
 import { clearSession, getToken } from './auth'
 import type { ApiRequestOptions, ApiResponse } from '../types/api'
 
-/** API 基础地址，由环境变量注入（.env.development / .env.production）。 */
-const baseUrl = import.meta.env.VITE_API_BASE_URL || ''
+/** API 基础地址。H5 开发默认走 Vite 代理；小程序/真机使用局域网或生产绝对地址。 */
+let baseUrl = import.meta.env.VITE_API_BASE_URL || ''
+// #ifdef H5
+baseUrl = import.meta.env.VITE_H5_API_BASE_URL ?? ''
+// #endif
 
 /**
  * API 业务异常。携带后端返回的 code 与 data（如余额不足时的 {balance, required}），

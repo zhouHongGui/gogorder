@@ -1,7 +1,10 @@
 import type { ApiRequestOptions, ApiResponse } from '../types/api'
 import { clearSession, getCurrentShop, getToken } from './session'
 
-const baseUrl = import.meta.env.VITE_API_BASE_URL || ''
+let baseUrl = import.meta.env.VITE_API_BASE_URL || ''
+// #ifdef H5
+baseUrl = import.meta.env.VITE_H5_API_BASE_URL ?? ''
+// #endif
 
 export class ApiRequestError<T = unknown> extends Error {
   code: number

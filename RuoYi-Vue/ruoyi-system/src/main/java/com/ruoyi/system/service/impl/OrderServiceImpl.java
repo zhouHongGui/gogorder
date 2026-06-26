@@ -416,7 +416,7 @@ public class OrderServiceImpl implements IOrderService
     /**
      * 查询订单详情。仅返回属于当前用户的订单（越权访问返回「订单不存在」）。
      *
-     * @return 含完整时间线（下单/支付/接单/制作/核销/取消各时间点）与商品明细的详情视图
+     * @return 含完整时间线（下单/支付/接单/制作/完成/取消各时间点）与商品明细的详情视图
      */
     @Override
     public OrderDetailView getOrderDetail(Long userId, Long orderId)
@@ -454,6 +454,7 @@ public class OrderServiceImpl implements IOrderService
         view.setPickupToken(order.getPickupToken());
         view.setPickupDate(order.getPickupDate());
         fillQueueAhead(view, order);
+        view.setEstimatedReadyTime(order.getEstimatedReadyTime());
         view.setPayTime(order.getPayTime());
         view.setAcceptTime(order.getAcceptTime());
         view.setMakeStartTime(order.getMakeStartTime());
