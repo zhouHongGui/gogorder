@@ -8,6 +8,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
+import com.github.pagehelper.PageHelper;
+import com.github.pagehelper.PageInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,14 +27,19 @@ import com.ruoyi.common.exception.ServiceException;
 import com.ruoyi.common.utils.StringUtils;
 import com.ruoyi.system.domain.BizOrder;
 import com.ruoyi.system.domain.BizOrderItem;
+import com.ruoyi.system.domain.CUser;
 import com.ruoyi.system.domain.Shop;
 import com.ruoyi.system.domain.dto.BOrderBoardView;
 import com.ruoyi.system.domain.dto.BOrderCardView;
+import com.ruoyi.system.domain.dto.BOrderListItemView;
+import com.ruoyi.system.domain.dto.BOrderPageView;
+import com.ruoyi.system.domain.dto.BOrderQuery;
 import com.ruoyi.system.domain.dto.OrderDetailView;
 import com.ruoyi.system.domain.dto.OrderItemView;
 import com.ruoyi.system.domain.dto.SpecSnapshot;
 import com.ruoyi.system.mapper.BizOrderItemMapper;
 import com.ruoyi.system.mapper.BizOrderMapper;
+import com.ruoyi.system.mapper.CUserMapper;
 import com.ruoyi.system.mapper.ShopMapper;
 import com.ruoyi.system.service.IBOrderService;
 
@@ -46,6 +53,7 @@ public class BOrderServiceImpl implements IBOrderService
 
     @Autowired private BizOrderMapper bizOrderMapper;
     @Autowired private BizOrderItemMapper bizOrderItemMapper;
+    @Autowired private CUserMapper cUserMapper;
     @Autowired private ShopMapper shopMapper;
     @Autowired private ProductionScheduleService productionScheduleService;
 
@@ -102,11 +110,27 @@ public class BOrderServiceImpl implements IBOrderService
     }
 
     @Override
+    public BOrderPageView listOrders(Long shopId, BOrderQuery query)
+    {
+        requireShop(shopId);
+        BOrderQuery effectiveQuery = query == null ? new BOrderQuery() : query;
+        effectiveQuery.setShopId(shopId);
+        effectiveQuery.normalize();
+        PageHelper.startPage(effectiveQuery.getPageNum(), effectiveQuery.getPageSize());
+        List<BOrderListItemView> rows = bizOrderMapper.selectBOrderList(effectiveQuery);
+        PageInfo<BOrderListItemView> pageInfo = new PageInfo<>(rows);
+        rows.forEach(this::fillListDesc);
+        return new BOrderPageView(rows, pageInfo.getTotal(), effectiveQuery.getPageNum(), effectiveQuery.getPageSize());
+    }
+
+    @Override
     public OrderDetailView getDetail(Long shopId, Long orderId)
     {
         BizOrder order = requireOrderInShop(shopId, orderId);
         Shop shop = requireShop(shopId);
         OrderDetailView view = buildDetailView(order, shop, bizOrderItemMapper.selectByOrderId(orderId));
+        CUser user = order.getUserId() == null ? null : cUserMapper.selectById(order.getUserId());
+        view.setReservedPhone(maskPhone(user == null ? null : user.getPhone()));
         // B 端详情不下发 pickupToken；该令牌只允许由出餐兜底扫码请求携带，避免被列表/详情泄露。
         view.setPickupToken(null);
         return view;
@@ -114,18 +138,32 @@ public class BOrderServiceImpl implements IBOrderService
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void startMake(Long shopId, Long orderId)
+    public void startMake(Long shopId, Long orderId, Long operatorId)
     {
-        startMakeInternal(shopId, orderId);
+        boolean changed = startMakeInternal(shopId, orderId);
+        BizOrder order = requireOrderInShop(shopId, orderId);
+        if (changed)
+        {
+            log.info("员工端开始制作成功 orderId={} orderNo={} shopId={} operatorId={}",
+                    orderId, order.getOrderNo(), shopId, operatorId);
+        }
+        else
+        {
+            log.debug("员工端开始制作幂等返回 orderId={} shopId={} operatorId={} status={}",
+                    orderId, shopId, operatorId, order.getOrderStatus());
+        }
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void notifyPickup(Long shopId, Long orderId)
+    public void notifyPickup(Long shopId, Long orderId, Long operatorId)
     {
         int rows = bizOrderMapper.updateScanOut(orderId, shopId, LocalDateTime.now());
         if (rows > 0)
         {
+            BizOrder order = requireOrderInShop(shopId, orderId);
+            log.info("员工端通知取餐成功 orderId={} orderNo={} shopId={} operatorId={} pickupDisplay={}",
+                    orderId, order.getOrderNo(), shopId, operatorId, order.getPickupDisplay());
             registerAfterCommit(() -> productionScheduleService.onOrderScannedOut(shopId));
             return;
         }
@@ -134,6 +172,8 @@ public class BOrderServiceImpl implements IBOrderService
         if (Integer.valueOf(OrderStatusEnum.READY.getCode()).equals(order.getOrderStatus())
                 || Integer.valueOf(OrderStatusEnum.COMPLETED.getCode()).equals(order.getOrderStatus()))
         {
+            log.debug("员工端通知取餐幂等返回 orderId={} shopId={} operatorId={} status={}",
+                    orderId, shopId, operatorId, order.getOrderStatus());
             return;
         }
         if (!Integer.valueOf(PayStatusEnum.PAY_SUCCESS.getCode()).equals(order.getPayStatus())
@@ -146,7 +186,7 @@ public class BOrderServiceImpl implements IBOrderService
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public OrderDetailView scanOut(Long shopId, String code)
+    public OrderDetailView scanOut(Long shopId, String code, Long operatorId)
     {
         String normalizedCode = code == null ? "" : code.trim();
         if (normalizedCode.isEmpty())
@@ -163,6 +203,8 @@ public class BOrderServiceImpl implements IBOrderService
         if (Integer.valueOf(OrderStatusEnum.READY.getCode()).equals(status)
                 || Integer.valueOf(OrderStatusEnum.COMPLETED.getCode()).equals(status))
         {
+            log.debug("员工端出餐兜底幂等返回 orderId={} shopId={} operatorId={} status={}",
+                    order.getId(), shopId, operatorId, status);
             return getDetail(shopId, order.getId());
         }
         if (!Integer.valueOf(OrderStatusEnum.MAKING.getCode()).equals(status))
@@ -175,22 +217,29 @@ public class BOrderServiceImpl implements IBOrderService
             throw new ServiceException("订单号或取餐号无效或当前不可用", HttpStatus.BAD_REQUEST);
         }
         // 通知取餐后释放串行制作槽位，推进队列下一单进入制作。
+        log.info("员工端出餐兜底成功 orderId={} orderNo={} shopId={} operatorId={} pickupDisplay={}",
+                order.getId(), order.getOrderNo(), shopId, operatorId, order.getPickupDisplay());
         registerAfterCommit(() -> productionScheduleService.onOrderScannedOut(shopId));
         return getDetail(shopId, order.getId());
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void completeOrder(Long shopId, Long orderId)
+    public void completeOrder(Long shopId, Long orderId, Long operatorId)
     {
         int rows = bizOrderMapper.updateCompleteOrder(orderId, shopId, LocalDateTime.now());
         if (rows > 0)
         {
+            BizOrder order = requireOrderInShop(shopId, orderId);
+            log.info("员工端完成订单成功 orderId={} orderNo={} shopId={} operatorId={}",
+                    orderId, order.getOrderNo(), shopId, operatorId);
             return;
         }
         BizOrder order = requireOrderInShop(shopId, orderId);
         if (Integer.valueOf(OrderStatusEnum.COMPLETED.getCode()).equals(order.getOrderStatus()))
         {
+            log.debug("员工端完成订单幂等返回 orderId={} shopId={} operatorId={}",
+                    orderId, shopId, operatorId);
             return;
         }
         if (!Integer.valueOf(PayStatusEnum.PAY_SUCCESS.getCode()).equals(order.getPayStatus())
@@ -230,9 +279,19 @@ public class BOrderServiceImpl implements IBOrderService
         });
     }
 
-    private void startMakeInternal(Long shopId, Long orderId)
+    private boolean startMakeInternal(Long shopId, Long orderId)
     {
         BizOrder order = requireOrderInShop(shopId, orderId);
+        if (Integer.valueOf(PayStatusEnum.PAY_SUCCESS.getCode()).equals(order.getPayStatus())
+                && isAtOrAfterMaking(order.getOrderStatus()))
+        {
+            return false;
+        }
+        if (!Integer.valueOf(PayStatusEnum.PAY_SUCCESS.getCode()).equals(order.getPayStatus())
+                || !Integer.valueOf(OrderStatusEnum.ACCEPTED.getCode()).equals(order.getOrderStatus()))
+        {
+            throw new ServiceException("订单状态不允许开始制作", HttpStatus.CONFLICT);
+        }
         Shop shop = requireShop(shopId);
         LocalDateTime makeWindowTime = LocalDateTime.now().plusMinutes(StringUtils.nvl(shop.getMakeLeadMinutes(), 30));
         if (isFuturePreorder(order, makeWindowTime))
@@ -247,19 +306,27 @@ public class BOrderServiceImpl implements IBOrderService
         int rows = bizOrderMapper.updateStartMake(orderId, shopId, LocalDateTime.now());
         if (rows == 0)
         {
-            ensureTransitionTarget(shopId, orderId, OrderStatusEnum.ACCEPTED, "订单状态不允许开始制作");
+            BizOrder current = requireOrderInShop(shopId, orderId);
+            if (Integer.valueOf(PayStatusEnum.PAY_SUCCESS.getCode()).equals(current.getPayStatus())
+                    && isAtOrAfterMaking(current.getOrderStatus()))
+            {
+                return false;
+            }
+            if (!Integer.valueOf(PayStatusEnum.PAY_SUCCESS.getCode()).equals(current.getPayStatus())
+                    || !Integer.valueOf(OrderStatusEnum.ACCEPTED.getCode()).equals(current.getOrderStatus()))
+            {
+                throw new ServiceException("订单状态不允许开始制作", HttpStatus.CONFLICT);
+            }
+            throw new ServiceException("订单状态已变更，请刷新后重试", HttpStatus.CONFLICT);
         }
+        return true;
     }
 
-    private void ensureTransitionTarget(Long shopId, Long orderId, OrderStatusEnum expectedStatus, String message)
+    private boolean isAtOrAfterMaking(Integer status)
     {
-        BizOrder order = requireOrderInShop(shopId, orderId);
-        if (!Integer.valueOf(PayStatusEnum.PAY_SUCCESS.getCode()).equals(order.getPayStatus())
-                || !Integer.valueOf(expectedStatus.getCode()).equals(order.getOrderStatus()))
-        {
-            throw new ServiceException(message, HttpStatus.CONFLICT);
-        }
-        throw new ServiceException("订单状态已变更，请刷新后重试", HttpStatus.CONFLICT);
+        return Integer.valueOf(OrderStatusEnum.MAKING.getCode()).equals(status)
+                || Integer.valueOf(OrderStatusEnum.READY.getCode()).equals(status)
+                || Integer.valueOf(OrderStatusEnum.COMPLETED.getCode()).equals(status);
     }
 
     private BizOrder requireOrderInShop(Long shopId, Long orderId)
@@ -318,7 +385,7 @@ public class BOrderServiceImpl implements IBOrderService
         view.setOrderTypeDesc(enumDesc(OrderTypeEnum.values(), order.getOrderType()));
         view.setScheduledPickupTime(order.getScheduledPickupTime());
         view.setOrderStatus(order.getOrderStatus());
-        view.setOrderStatusDesc(enumDesc(OrderStatusEnum.values(), order.getOrderStatus()));
+        view.setOrderStatusDesc(staffOrderStatusDesc(order.getOrderStatus()));
         view.setPayStatus(order.getPayStatus());
         view.setRefundStatus(order.getRefundStatus());
         view.setTotalAmount(order.getTotalAmount());
@@ -333,6 +400,15 @@ public class BOrderServiceImpl implements IBOrderService
         view.setMakeTimeout(isMakeTimeout(order, now));
         view.setItems(itemViews);
         return view;
+    }
+
+    private void fillListDesc(BOrderListItemView view)
+    {
+        view.setUserPhoneMasked(maskPhone(view.getUserPhone()));
+        view.setOrderTypeDesc(enumDesc(OrderTypeEnum.values(), view.getOrderType()));
+        view.setOrderStatusDesc(staffOrderStatusDesc(view.getOrderStatus()));
+        view.setPayStatusDesc(enumDesc(PayStatusEnum.values(), view.getPayStatus()));
+        view.setRefundStatusDesc(enumDesc(RefundStatusEnum.values(), view.getRefundStatus()));
     }
 
     private boolean isMakeTimeout(BizOrder order, LocalDateTime now)
@@ -354,7 +430,7 @@ public class BOrderServiceImpl implements IBOrderService
         view.setOrderTypeDesc(enumDesc(OrderTypeEnum.values(), order.getOrderType()));
         view.setScheduledPickupTime(order.getScheduledPickupTime());
         view.setOrderStatus(order.getOrderStatus());
-        view.setOrderStatusDesc(enumDesc(OrderStatusEnum.values(), order.getOrderStatus()));
+        view.setOrderStatusDesc(staffOrderStatusDesc(order.getOrderStatus()));
         view.setPayStatus(order.getPayStatus());
         view.setPayStatusDesc(enumDesc(PayStatusEnum.values(), order.getPayStatus()));
         view.setRefundStatus(order.getRefundStatus());
@@ -396,6 +472,15 @@ public class BOrderServiceImpl implements IBOrderService
         return view;
     }
 
+    private String maskPhone(String phone)
+    {
+        if (StringUtils.isEmpty(phone) || phone.length() < 7)
+        {
+            return phone;
+        }
+        return phone.substring(0, 3) + "****" + phone.substring(phone.length() - 4);
+    }
+
     private String enumDesc(OrderTypeEnum[] values, String code)
     {
         for (OrderTypeEnum value : values) if (value.getCode().equals(code)) return value.getDesc();
@@ -407,6 +492,15 @@ public class BOrderServiceImpl implements IBOrderService
         if (code == null) return "";
         for (OrderStatusEnum value : values) if (value.getCode() == code) return value.getDesc();
         return "";
+    }
+
+    private String staffOrderStatusDesc(Integer code)
+    {
+        if (Integer.valueOf(OrderStatusEnum.ACCEPTED.getCode()).equals(code))
+        {
+            return "待制作";
+        }
+        return enumDesc(OrderStatusEnum.values(), code);
     }
 
     private String enumDesc(PayStatusEnum[] values, Integer code)

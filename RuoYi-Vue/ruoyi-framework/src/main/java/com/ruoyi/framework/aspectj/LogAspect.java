@@ -13,6 +13,8 @@ import org.aspectj.lang.annotation.Before;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.NamedThreadLocal;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.validation.BindingResult;
 import org.springframework.web.multipart.MultipartFile;
@@ -25,12 +27,12 @@ import com.ruoyi.common.enums.BusinessStatus;
 import com.ruoyi.common.enums.HttpMethod;
 import com.ruoyi.common.filter.PropertyPreExcludeFilter;
 import com.ruoyi.common.utils.ExceptionUtil;
-import com.ruoyi.common.utils.SecurityUtils;
 import com.ruoyi.common.utils.ServletUtils;
 import com.ruoyi.common.utils.StringUtils;
 import com.ruoyi.common.utils.ip.IpUtils;
 import com.ruoyi.framework.manager.AsyncManager;
 import com.ruoyi.framework.manager.factory.AsyncFactory;
+import com.ruoyi.system.domain.ShopStaff;
 import com.ruoyi.system.domain.SysOperLog;
 
 /**
@@ -45,7 +47,9 @@ public class LogAspect
     private static final Logger log = LoggerFactory.getLogger(LogAspect.class);
 
     /** 排除敏感属性字段 */
-    public static final String[] EXCLUDE_PROPERTIES = { "password", "oldPassword", "newPassword", "confirmPassword", "printerKey" };
+    public static final String[] EXCLUDE_PROPERTIES = {
+            "password", "oldPassword", "newPassword", "confirmPassword", "printerKey", "pickupToken"
+    };
 
     /** 计算操作消耗时间 */
     private static final ThreadLocal<Long> TIME_THREADLOCAL = new NamedThreadLocal<Long>("Cost Time");
@@ -89,9 +93,6 @@ public class LogAspect
     {
         try
         {
-            // 获取当前的用户
-            LoginUser loginUser = SecurityUtils.getLoginUser();
-
             // *========数据库日志=========*//
             SysOperLog operLog = new SysOperLog();
             operLog.setStatus(BusinessStatus.SUCCESS.ordinal());
@@ -99,7 +100,9 @@ public class LogAspect
             String ip = IpUtils.getIpAddr();
             operLog.setOperIp(ip);
             operLog.setOperUrl(StringUtils.substring(ServletUtils.getRequest().getRequestURI(), 0, 255));
-            if (loginUser != null)
+            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+            Object principal = authentication == null ? null : authentication.getPrincipal();
+            if (principal instanceof LoginUser loginUser)
             {
                 operLog.setOperName(loginUser.getUsername());
                 SysUser currentUser = loginUser.getUser();
@@ -107,6 +110,10 @@ public class LogAspect
                 {
                     operLog.setDeptName(currentUser.getDept().getDeptName());
                 }
+            }
+            else if (principal instanceof ShopStaff staff)
+            {
+                operLog.setOperName(staff.getAccount());
             }
 
             if (e != null)

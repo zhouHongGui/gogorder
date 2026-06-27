@@ -8,6 +8,8 @@ import com.ruoyi.system.domain.BizOrder;
 import com.ruoyi.system.domain.dto.AdminOrderDetailView;
 import com.ruoyi.system.domain.dto.AdminOrderListItemView;
 import com.ruoyi.system.domain.dto.AdminOrderQuery;
+import com.ruoyi.system.domain.dto.BOrderListItemView;
+import com.ruoyi.system.domain.dto.BOrderQuery;
 
 public interface BizOrderMapper
 {
@@ -52,6 +54,7 @@ public interface BizOrderMapper
     int selectPickupSeq(@Param("shopId") Long shopId, @Param("pickupDate") LocalDate pickupDate);
     List<AdminOrderListItemView> selectAdminOrderList(AdminOrderQuery query);
     AdminOrderDetailView selectAdminOrderDetail(@Param("orderId") Long orderId);
+    List<BOrderListItemView> selectBOrderList(BOrderQuery query);
 
     // ===== 制作调度（串行队列，见 ProductionScheduleService / M15 §6.4）=====
     /** 制作中订单数（串行模式下应最多 1）。 */

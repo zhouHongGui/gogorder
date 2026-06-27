@@ -36,6 +36,38 @@
         "navigationStyle": "custom",
         "backgroundColor": "#f7f4ee"
       }
+    },
+    {
+      "path": "pages/order/list",
+      "style": {
+        "navigationStyle": "custom",
+        "enablePullDownRefresh": true,
+        "backgroundColor": "#f7f4ee"
+      }
+    },
+    {
+      "path": "pages/order/detail",
+      "style": {
+        "navigationStyle": "custom",
+        "enablePullDownRefresh": true,
+        "backgroundColor": "#f7f4ee"
+      }
+    },
+    {
+      "path": "pages/product/manage",
+      "style": {
+        "navigationStyle": "custom",
+        "enablePullDownRefresh": true,
+        "backgroundColor": "#f7f4ee"
+      }
+    },
+    {
+      "path": "pages/stat/index",
+      "style": {
+        "navigationStyle": "custom",
+        "enablePullDownRefresh": true,
+        "backgroundColor": "#f7f4ee"
+      }
     }
   ],
   "globalStyle": {

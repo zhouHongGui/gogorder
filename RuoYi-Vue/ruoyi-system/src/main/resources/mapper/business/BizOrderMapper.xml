@@ -90,6 +90,30 @@
         <result property="createTime" column="create_time"/>
     </resultMap>
 
+    <resultMap id="BOrderListResult" type="com.ruoyi.system.domain.dto.BOrderListItemView">
+        <id property="orderId" column="order_id"/>
+        <result property="orderNo" column="order_no"/>
+        <result property="userPhone" column="user_phone"/>
+        <result property="orderType" column="order_type"/>
+        <result property="scheduledPickupTime" column="scheduled_pickup_time"/>
+        <result property="orderStatus" column="order_status"/>
+        <result property="payStatus" column="pay_status"/>
+        <result property="refundStatus" column="refund_status"/>
+        <result property="totalAmount" column="total_amount"/>
+        <result property="itemCount" column="item_count"/>
+        <result property="pickupDisplay" column="pickup_display"/>
+        <result property="pickupDate" column="pickup_date"/>
+        <result property="remark" column="remark"/>
+        <result property="estimatedReadyTime" column="estimated_ready_time"/>
+        <result property="payTime" column="pay_time"/>
+        <result property="acceptTime" column="accept_time"/>
+        <result property="makeStartTime" column="make_start_time"/>
+        <result property="completeMakeTime" column="complete_make_time"/>
+        <result property="verifyTime" column="verify_time"/>
+        <result property="cancelTime" column="cancel_time"/>
+        <result property="createTime" column="create_time"/>
+    </resultMap>
+
     <sql id="selectOrderColumns">
         select id, order_no, submit_key, pickup_token, pickup_display, pickup_date, user_id, shop_id,
                order_type, scheduled_pickup_time, order_status, pay_status, refund_status,
@@ -130,6 +154,48 @@
             </if>
             <if test="phone != null and phone != ''">
                 and u.phone like concat('%', #{phone}, '%')
+            </if>
+            <if test="startTime != null">
+                and o.create_time &gt;= #{startTime}
+            </if>
+            <if test="endTime != null">
+                and o.create_time &lt;= #{endTime}
+            </if>
+        </where>
+    </sql>
+
+    <sql id="selectBOrderListColumns">
+        select o.id as order_id, o.order_no, u.phone as user_phone,
+               o.order_type, o.scheduled_pickup_time, o.order_status, o.pay_status, o.refund_status,
+               o.total_amount, o.remark, o.pickup_display, o.pickup_date,
+               (select coalesce(sum(oi.quantity), 0) from biz_order_item oi where oi.order_id = o.id) as item_count,
+               o.estimated_ready_time, o.pay_time, o.accept_time, o.make_start_time,
+               o.complete_make_time, o.verify_time, o.cancel_time, o.create_time
+        from biz_order o
+        left join c_user u on u.id = o.user_id
+    </sql>
+
+    <sql id="bOrderFilter">
+        <where>
+            o.shop_id = #{shopId}
+            <if test="keyword != null and keyword != ''">
+                and (
+                    o.order_no like concat('%', #{keyword}, '%')
+                    or o.pickup_display like concat('%', #{keyword}, '%')
+                    or o.remark like concat('%', #{keyword}, '%')
+                )
+            </if>
+            <if test="phone != null and phone != ''">
+                and u.phone like concat('%', #{phone}, '%')
+            </if>
+            <if test="orderStatus != null">
+                and o.order_status = #{orderStatus}
+            </if>
+            <if test="payStatus != null">
+                and o.pay_status = #{payStatus}
+            </if>
+            <if test="refundStatus != null">
+                and o.refund_status = #{refundStatus}
             </if>
             <if test="startTime != null">
                 and o.create_time &gt;= #{startTime}
@@ -370,6 +436,11 @@
     <select id="selectAdminOrderDetail" parameterType="Long" resultMap="AdminOrderDetailResult">
         <include refid="selectAdminOrderColumns"/>
         where o.id = #{orderId}
+    </select>
+    <select id="selectBOrderList" resultMap="BOrderListResult">
+        <include refid="selectBOrderListColumns"/>
+        <include refid="bOrderFilter"/>
+        order by o.id desc
     </select>
     <select id="countMakingOrders" parameterType="Long" resultType="int">
         select count(1) from biz_order

@@ -25,6 +25,7 @@ export function request<T>(options: ApiRequestOptions): Promise<T> {
       shop = true,
       redirectOnUnauthorized = true,
       showErrorToast = true,
+      page = false,
       ...requestOptions
     } = options
     const token = getToken()
@@ -52,6 +53,13 @@ export function request<T>(options: ApiRequestOptions): Promise<T> {
           const message = body?.msg || '请求失败'
           if (showErrorToast) uni.showToast({ title: message, icon: 'none' })
           reject(new ApiRequestError(body?.code || response.statusCode, message, body?.data))
+          return
+        }
+        if (page) {
+          resolve({
+            rows: Array.isArray(body.rows) ? body.rows : [],
+            total: Number(body.total || 0)
+          } as T)
           return
         }
         resolve(body.data as T)

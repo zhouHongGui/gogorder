@@ -9,6 +9,8 @@ import com.ruoyi.system.domain.SpecOption;
 import com.ruoyi.system.domain.SpecTemplate;
 import com.ruoyi.system.domain.StockLedger;
 import com.ruoyi.system.domain.dto.CProductView;
+import com.ruoyi.system.domain.dto.BShopProductQuery;
+import com.ruoyi.system.domain.dto.BShopProductView;
 import com.ruoyi.system.domain.dto.CProductCategoryView;
 import com.ruoyi.system.domain.dto.CProductSalesView;
 
@@ -71,6 +73,9 @@ public interface ProductCenterMapper
     int restoreShopProductStock(@Param("id") Long id, @Param("quantity") Integer quantity);
     int deleteShopProducts(List<Long> ids);
     int countActiveOrderItemsByShopProductIds(@Param("ids") List<Long> ids);
+    int updateShopProductStatus(@Param("id") Long id, @Param("status") Integer status);
+    List<Category> selectBShopProductCategories(Long shopId);
+    List<BShopProductView> selectBShopProductList(BShopProductQuery query);
 
     List<Category> selectCShopCategories(Long shopId);
     List<CProductView> selectCShopProducts(@Param("shopId") Long shopId, @Param("categoryId") Long categoryId,

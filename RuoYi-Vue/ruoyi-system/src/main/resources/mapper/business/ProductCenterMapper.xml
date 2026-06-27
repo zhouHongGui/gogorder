@@ -390,6 +390,111 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
           and bo.order_status not in (4, 5)
     </select>
 
+    <update id="updateShopProductStatus">
+        update shop_product set status = #{status} where id = #{id}
+    </update>
+
+    <resultMap id="BShopProductResult" type="com.ruoyi.system.domain.dto.BShopProductView">
+        <id property="shopProductId" column="shop_product_id"/>
+        <result property="shopId" column="shop_id"/>
+        <result property="productId" column="product_id"/>
+        <result property="productName" column="product_name"/>
+        <result property="productImage" column="product_image"/>
+        <result property="categoryNames" column="category_names"/>
+        <result property="basePrice" column="base_price"/>
+        <result property="price" column="price"/>
+        <result property="effectivePrice" column="effective_price"/>
+        <result property="status" column="status"/>
+        <result property="stock" column="stock"/>
+        <result property="sortOrder" column="sort_order"/>
+        <result property="todaySales" column="today_sales"/>
+        <result property="monthlySales" column="monthly_sales"/>
+        <result property="createTime" column="create_time"/>
+    </resultMap>
+
+    <sql id="bShopProductBase">
+        from shop_product sp
+        inner join product p on p.id = sp.product_id and p.status = 1
+        inner join shop s on s.id = sp.shop_id and s.del_flag = 0
+    </sql>
+
+    <sql id="bShopProductFilter">
+        <where>
+            sp.shop_id = #{shopId}
+            <if test="keyword != null and keyword != ''">
+                and (p.name like concat('%', #{keyword}, '%') or p.description like concat('%', #{keyword}, '%'))
+            </if>
+            <if test="categoryId != null">
+                and exists (
+                    select 1 from product_category pc
+                    where pc.product_id = p.id and pc.category_id = #{categoryId}
+                )
+            </if>
+            <if test="status != null">
+                and sp.status = #{status}
+            </if>
+            <if test="stockState != null and stockState.equals('INFINITE')">
+                and sp.stock = -1
+            </if>
+            <if test="stockState != null and stockState.equals('ZERO')">
+                and sp.stock = 0
+            </if>
+            <if test="stockState != null and stockState.equals('LOW')">
+                and sp.stock between 1 and 10
+            </if>
+            <if test="stockState != null and stockState.equals('FINITE')">
+                and sp.stock &gt;= 0
+            </if>
+        </where>
+    </sql>
+
+    <select id="selectBShopProductCategories" parameterType="Long" resultMap="CategoryResult">
+        select distinct c.id, c.name, c.sort_order, c.status, c.create_time
+        from category c
+        inner join product_category pc on pc.category_id = c.id
+        inner join product p on p.id = pc.product_id and p.status = 1
+        inner join shop_product sp on sp.product_id = p.id
+        inner join shop s on s.id = sp.shop_id and s.del_flag = 0
+        where sp.shop_id = #{shopId} and c.status = 1
+        order by c.sort_order asc, c.id asc
+    </select>
+
+    <select id="selectBShopProductList" resultMap="BShopProductResult">
+        select sp.id shop_product_id, sp.shop_id, p.id product_id, p.name product_name, p.image product_image,
+               (
+                   select group_concat(c.name order by c.sort_order asc, c.id asc separator ' / ')
+                   from product_category pc
+                   inner join category c on c.id = pc.category_id and c.status = 1
+                   where pc.product_id = p.id
+               ) category_names,
+               p.base_price, sp.price, coalesce(sp.price, p.base_price) effective_price,
+               sp.status, sp.stock, sp.sort_order, sp.create_time,
+               (
+                   select coalesce(sum(oi.quantity), 0)
+                   from biz_order bo
+                   inner join biz_order_item oi on oi.order_id = bo.id
+                   where bo.shop_id = sp.shop_id
+                     and bo.pay_status = 1
+                     and bo.refund_status = 0
+                     and bo.pay_time &gt;= curdate()
+                     and bo.pay_time &lt; date_add(curdate(), interval 1 day)
+                     and oi.product_id = p.id
+               ) today_sales,
+               (
+                   select coalesce(sum(oi.quantity), 0)
+                   from biz_order bo
+                   inner join biz_order_item oi on oi.order_id = bo.id
+                   where bo.shop_id = sp.shop_id
+                     and bo.pay_status = 1
+                     and bo.refund_status = 0
+                     and bo.pay_time &gt;= date_sub(sysdate(), interval 30 day)
+                     and oi.product_id = p.id
+               ) monthly_sales
+        <include refid="bShopProductBase"/>
+        <include refid="bShopProductFilter"/>
+        order by sp.sort_order asc, sp.id desc
+    </select>
+
     <resultMap id="CProductResult" type="CProductView">
         <id property="shopProductId" column="shop_product_id"/>
         <result property="productId" column="product_id"/>

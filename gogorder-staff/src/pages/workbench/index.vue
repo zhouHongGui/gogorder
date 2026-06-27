@@ -101,8 +101,16 @@ function openScanOut() {
   uni.navigateTo({ url: '/pages/order/scan-out' })
 }
 
-function showPending(feature: string) {
-  uni.showToast({ title: `${feature}将在后续接入`, icon: 'none' })
+function openStats() {
+  uni.navigateTo({ url: '/pages/stat/index' })
+}
+
+function openOrderList() {
+  uni.navigateTo({ url: '/pages/order/list' })
+}
+
+function openProductManage() {
+  uni.navigateTo({ url: '/pages/product/manage' })
 }
 </script>
 
@@ -209,18 +217,25 @@ function showPending(feature: string) {
       </view>
 
       <view class="secondary-grid">
-        <view class="small-action" @click="showPending('订单查询')">
+        <view class="small-action" @click="openStats">
+          <text class="small-icon stat-icon">¥</text>
+          <view>
+            <text class="small-title">营业数据</text>
+            <text class="small-desc">营业额、杯数与排行</text>
+          </view>
+        </view>
+        <view class="small-action" @click="openOrderList">
           <text class="small-icon order-icon">#</text>
           <view>
             <text class="small-title">订单查询</text>
             <text class="small-desc">详情与退款记录</text>
           </view>
         </view>
-        <view class="small-action" @click="showPending('商品沽清')">
+        <view class="small-action" @click="openProductManage">
           <text class="small-icon soldout-icon">!</text>
           <view>
-            <text class="small-title">商品沽清</text>
-            <text class="small-desc">门店商品状态</text>
+            <text class="small-title">商品管理</text>
+            <text class="small-desc">售空与停售</text>
           </view>
         </view>
       </view>
@@ -812,6 +827,11 @@ function showPending(feature: string) {
 .order-icon {
   background: #e9f2ec;
   color: #39745a;
+}
+
+.stat-icon {
+  background: #fff4df;
+  color: #b65629;
 }
 
 .soldout-icon {

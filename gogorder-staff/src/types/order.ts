@@ -28,8 +28,54 @@ export interface StaffOrderCard {
   acceptTime?: string
   makeStartTime?: string
   completeMakeTime?: string
+  estimatedReadyTime?: string
   makeTimeout?: boolean
   items: OrderItem[]
+}
+
+export interface StaffOrderListItem {
+  orderId: number
+  orderNo: string
+  userPhoneMasked?: string
+  orderType: OrderType
+  orderTypeDesc: string
+  scheduledPickupTime?: string
+  orderStatus: number
+  orderStatusDesc: string
+  payStatus: number
+  payStatusDesc?: string
+  refundStatus: number
+  refundStatusDesc?: string
+  totalAmount: number
+  itemCount: number
+  pickupDisplay?: string
+  pickupDate?: string
+  remark?: string
+  estimatedReadyTime?: string
+  payTime?: string
+  acceptTime?: string
+  makeStartTime?: string
+  completeMakeTime?: string
+  verifyTime?: string
+  cancelTime?: string
+  createTime: string
+}
+
+export interface StaffOrderQuery {
+  keyword?: string
+  phone?: string
+  orderStatus?: number
+  payStatus?: number
+  refundStatus?: number
+  startTime?: string
+  endTime?: string
+  pageNum?: number
+  pageSize?: number
+}
+
+export interface StaffOrderPage {
+  rows: StaffOrderListItem[]
+  total: number
 }
 
 export interface StaffOrderBoard {
@@ -48,10 +94,16 @@ export interface StaffOrderDetail extends StaffOrderCard {
   shopId: number
   shopName: string
   shopPhone?: string
+  reservedPhone?: string
+  payStatusDesc?: string
+  refundStatusDesc?: string
   productAmount: number
   packFee: number
   pickupToken?: string
   pickupDate?: string
+  estimatedReadyTime?: string
+  queueAheadOrders?: number
+  queueAheadCups?: number
   payTime?: string
   verifyTime?: string
   cancelTime?: string

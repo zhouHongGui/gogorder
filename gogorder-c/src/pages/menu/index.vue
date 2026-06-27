@@ -273,13 +273,42 @@
           </view>
         </scroll-view>
 
-        <view class="detail-footer">
+        <view class="detail-quantity-card">
           <view>
-            <text class="footer-label">{{ selectedSpecSummary }}</text>
-            <text class="footer-price"><text>¥</text>{{ money(selectedPrice) }}</text>
+            <text class="quantity-title">购买数量</text>
+            <text class="quantity-subtitle">
+              {{ detail.stock === -1 ? '库存充足' : `剩余 ${detail.stock} 件` }}
+            </text>
           </view>
-          <button class="confirm-button" :disabled="detail.soldOut" @click="confirmSpecs">
-            {{ detail.soldOut ? '商品已售罄' : '加入购物车' }}
+          <view class="detail-quantity-control">
+            <view
+              class="detail-quantity-button"
+              :class="{ disabled: detailQuantity <= 1 }"
+              @click="changeDetailQuantity(-1)"
+            >
+              -
+            </view>
+            <text class="detail-quantity-value">{{ detailQuantity }}</text>
+            <view
+              class="detail-quantity-button plus"
+              :class="{ disabled: detailQuantity >= detailQuantityLimit }"
+              @click="changeDetailQuantity(1)"
+            >
+              +
+            </view>
+          </view>
+        </view>
+
+        <view class="detail-footer">
+          <view class="footer-copy">
+            <text class="footer-label">{{ selectedSpecSummary }}</text>
+            <view class="footer-price-row">
+              <text class="footer-unit-price">单价 ¥{{ money(selectedPrice) }}</text>
+              <text class="footer-price"><text>¥</text>{{ money(selectedTotalPrice) }}</text>
+            </view>
+          </view>
+          <button class="confirm-button" :disabled="detail.soldOut || cartBusy" @click="confirmSpecs">
+            {{ detail.soldOut ? '商品已售罄' : `加入购物车 · ${detailQuantity}份` }}
           </button>
         </view>
       </view>
@@ -331,6 +360,7 @@ const loading = ref(false)
 const productsLoadError = ref('')
 const detail = ref<Product | null>(null)
 const selections = reactive<SpecSelections>({})
+const detailQuantity = ref(1)
 const cart = ref<Cart>(createEmptyCart(shop.value))
 const cartVisible = ref(false)
 const cartBusy = ref(false)
@@ -367,6 +397,11 @@ const selectedPrice = computed(() => {
       .reduce((sum, option) => sum + (option.priceAdd || 0), 0)
   }, 0)
 })
+const detailQuantityLimit = computed(() => {
+  if (!detail.value || detail.value.stock === -1) return 99
+  return Math.max(1, Math.min(99, Number(detail.value.stock || 0)))
+})
+const selectedTotalPrice = computed(() => selectedPrice.value * detailQuantity.value)
 const selectedSpecSummary = computed(() => {
   if (!detail.value?.specs.length) return '默认规格'
   const labels = detail.value.specs.flatMap(spec => {
@@ -493,6 +528,7 @@ async function openProduct(product: Product) {
   if (!shopId) return
   const originPromise = captureProductFlyOrigin(product.productId)
   detail.value = await getProductDetail(shopId, product.productId)
+  detailQuantity.value = 1
   await originPromise
   initializeSelections(detail.value.specs)
 }
@@ -536,6 +572,15 @@ function selectOption(spec: ProductSpec, option: SpecOption) {
     uni.showToast({ title: `最多选择${spec.maxSelect}项`, icon: 'none' })
   }
   selections[spec.templateId] = selected
+}
+
+function changeDetailQuantity(delta: number) {
+  const next = detailQuantity.value + delta
+  const clamped = Math.max(1, Math.min(detailQuantityLimit.value, next))
+  if (next > detailQuantityLimit.value) {
+    uni.showToast({ title: '已达到可选数量上限', icon: 'none' })
+  }
+  detailQuantity.value = clamped
 }
 
 /** 确认规格：校验必选规格是否满足最少选择数，通过后加入购物车。 */
@@ -592,7 +637,7 @@ async function addSelectedProduct() {
     shopId,
     productId: detail.value.productId,
     specs: selectedSpecs(),
-    quantity: 1
+    quantity: detailQuantity.value
   }
   cartBusy.value = true
   cartMutationShopId = shopId
@@ -1383,6 +1428,72 @@ function money(cents: number | null | undefined): string {
   font-weight: 700;
 }
 
+.detail-quantity-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 2rpx 28rpx 20rpx;
+  padding: 20rpx 24rpx;
+  border-radius: 24rpx;
+  background: #f8f3eb;
+  box-sizing: border-box;
+}
+
+.quantity-title,
+.quantity-subtitle {
+  display: block;
+}
+
+.quantity-title {
+  color: #302c26;
+  font-size: 25rpx;
+  font-weight: 800;
+}
+
+.quantity-subtitle {
+  margin-top: 6rpx;
+  color: #9b9388;
+  font-size: 19rpx;
+}
+
+.detail-quantity-control {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+}
+
+.detail-quantity-button {
+  display: flex;
+  width: 54rpx;
+  height: 54rpx;
+  align-items: center;
+  justify-content: center;
+  border-radius: 20rpx;
+  background: #fff;
+  box-shadow: 0 8rpx 22rpx rgba(51, 42, 30, .08);
+  color: #29251f;
+  font-size: 34rpx;
+  font-weight: 850;
+  line-height: 54rpx;
+}
+
+.detail-quantity-button.plus {
+  background: #1c1b17;
+  color: #fff;
+}
+
+.detail-quantity-button.disabled {
+  opacity: .38;
+}
+
+.detail-quantity-value {
+  min-width: 42rpx;
+  color: #29251f;
+  font-size: 30rpx;
+  font-weight: 850;
+  text-align: center;
+}
+
 .detail-footer {
   display: flex;
   align-items: center;
@@ -1392,18 +1503,40 @@ function money(cents: number | null | undefined): string {
   background: #fff;
 }
 
+.footer-copy {
+  min-width: 0;
+  flex: 1;
+  margin-right: 20rpx;
+}
+
 .footer-label,
 .footer-price {
   display: block;
 }
 
 .footer-label {
+  max-width: 360rpx;
+  overflow: hidden;
   color: #999186;
   font-size: 17rpx;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.footer-price-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12rpx;
+  margin-top: 3rpx;
+}
+
+.footer-unit-price {
+  flex-shrink: 0;
+  color: #9b9388;
+  font-size: 18rpx;
 }
 
 .footer-price {
-  margin-top: 3rpx;
   color: #27231e;
   font-size: 35rpx;
   font-weight: 850;
@@ -1414,7 +1547,7 @@ function money(cents: number | null | undefined): string {
 }
 
 .confirm-button {
-  width: 260rpx;
+  width: 292rpx;
   height: 78rpx;
   margin: 0;
   border-radius: 39rpx;
@@ -2063,6 +2196,209 @@ function money(cents: number | null | undefined): string {
 
 .confirm-button {
   box-shadow: 0 9rpx 24rpx rgba(28, 27, 23, 0.18);
+}
+
+/* Polished product detail sheet */
+.detail-sheet {
+  position: relative;
+  background: #f6f0e8;
+  box-shadow: 0 -18rpx 48rpx rgba(27, 24, 20, 0.18);
+}
+
+.detail-hero {
+  height: 310rpx;
+}
+
+.detail-image-shade {
+  background:
+    radial-gradient(circle at 18% 18%, rgba(255, 255, 255, 0.2), transparent 32%),
+    linear-gradient(180deg, rgba(22, 19, 16, 0.04), rgba(22, 19, 16, 0.82));
+}
+
+.detail-copy {
+  right: 30rpx;
+  bottom: 28rpx;
+  left: 30rpx;
+}
+
+.detail-kicker {
+  display: inline-block;
+  padding: 6rpx 12rpx;
+  border-radius: 999rpx;
+  background: rgba(230, 183, 121, 0.18);
+  color: #f0c98d;
+  font-size: 13rpx;
+  letter-spacing: 2rpx;
+}
+
+.detail-name {
+  max-width: 570rpx;
+  font-size: 38rpx;
+  line-height: 1.2;
+}
+
+.detail-description {
+  max-width: 620rpx;
+  font-size: 20rpx;
+}
+
+.spec-scroll {
+  max-height: 35vh;
+  padding: 20rpx 24rpx 4rpx;
+}
+
+.spec-group {
+  margin-bottom: 18rpx;
+  padding: 24rpx;
+  border: 1rpx solid rgba(169, 119, 64, 0.08);
+  border-radius: 28rpx;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 10rpx 28rpx rgba(78, 60, 38, 0.06);
+}
+
+.spec-heading {
+  align-items: flex-start;
+  gap: 20rpx;
+}
+
+.spec-name {
+  color: #241f19;
+  font-size: 27rpx;
+}
+
+.spec-rule {
+  flex-shrink: 0;
+  padding: 6rpx 12rpx;
+  border-radius: 999rpx;
+  background: #f2ece3;
+  color: #9a7a57;
+  font-size: 18rpx;
+}
+
+.spec-rule.required {
+  background: #f7e8d4;
+  color: #b46b1e;
+}
+
+.option-list {
+  gap: 14rpx;
+  margin-top: 20rpx;
+}
+
+.option {
+  min-width: 0;
+  min-height: 60rpx;
+  align-items: center;
+  gap: 12rpx;
+  padding: 14rpx 20rpx;
+  border-color: #ece4d9;
+  border-radius: 999rpx;
+  background: #fbf8f3;
+  color: #51483d;
+  font-size: 22rpx;
+  line-height: 1.2;
+  box-shadow: inset 0 0 0 1rpx rgba(255, 255, 255, 0.72);
+}
+
+.option.selected {
+  border-color: #2b261f;
+  background: #2b261f;
+  box-shadow: 0 10rpx 24rpx rgba(43, 38, 31, 0.16);
+  color: #fff;
+}
+
+.detail-quantity-card {
+  margin: 2rpx 24rpx 18rpx;
+  padding: 22rpx 24rpx;
+  border: 1rpx solid rgba(169, 119, 64, 0.1);
+  border-radius: 30rpx;
+  background:
+    linear-gradient(135deg, rgba(255, 251, 244, 0.96), rgba(246, 235, 220, 0.96));
+  box-shadow: 0 12rpx 30rpx rgba(78, 60, 38, 0.07);
+}
+
+.quantity-title {
+  color: #241f19;
+  font-size: 27rpx;
+}
+
+.quantity-subtitle {
+  color: #a39382;
+  font-size: 20rpx;
+}
+
+.detail-quantity-control {
+  gap: 18rpx;
+  padding: 8rpx;
+  border-radius: 999rpx;
+  background: #fff;
+  box-shadow: inset 0 0 0 1rpx #efe6db;
+}
+
+.detail-quantity-button {
+  width: 58rpx;
+  height: 58rpx;
+  border-radius: 50%;
+  box-shadow: none;
+  font-size: 32rpx;
+  line-height: 58rpx;
+}
+
+.detail-quantity-button.plus {
+  background: linear-gradient(135deg, #2d281f, #4b3620);
+}
+
+.detail-quantity-value {
+  min-width: 50rpx;
+  font-size: 31rpx;
+}
+
+.detail-footer {
+  padding: 22rpx 24rpx calc(24rpx + env(safe-area-inset-bottom));
+  border-top: 0;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 -10rpx 30rpx rgba(74, 54, 32, 0.08);
+}
+
+.footer-copy {
+  margin-right: 18rpx;
+}
+
+.footer-label {
+  max-width: 360rpx;
+  color: #8b7f72;
+  font-size: 19rpx;
+}
+
+.footer-price-row {
+  gap: 14rpx;
+  margin-top: 7rpx;
+}
+
+.footer-unit-price {
+  color: #a59a8c;
+  font-size: 19rpx;
+}
+
+.footer-price {
+  color: #bd651c;
+  font-size: 40rpx;
+  line-height: 1;
+}
+
+.confirm-button {
+  width: 318rpx;
+  height: 82rpx;
+  border-radius: 999rpx;
+  background: linear-gradient(135deg, #1f1c17, #44311d);
+  box-shadow: 0 12rpx 28rpx rgba(61, 43, 24, 0.24);
+  font-size: 25rpx;
+  line-height: 82rpx;
+}
+
+.confirm-button[disabled] {
+  background: #b8afa4;
+  box-shadow: none;
 }
 
 @keyframes menu-rotate {

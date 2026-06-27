@@ -16,10 +16,12 @@ import com.ruoyi.common.annotation.RateLimiter;
 import com.ruoyi.common.constant.BAuthConstants;
 import com.ruoyi.common.constant.HttpStatus;
 import com.ruoyi.common.core.domain.AjaxResult;
+import com.ruoyi.common.core.page.TableDataInfo;
 import com.ruoyi.common.enums.BusinessType;
 import com.ruoyi.common.enums.LimitType;
 import com.ruoyi.common.exception.ServiceException;
 import com.ruoyi.system.domain.dto.BOrderCancelRefundRequest;
+import com.ruoyi.system.domain.dto.BOrderQuery;
 import com.ruoyi.system.domain.dto.BOrderScanOutRequest;
 import com.ruoyi.system.service.IBOrderService;
 import com.ruoyi.system.service.IOrderCancelService;
@@ -50,6 +52,16 @@ public class BOrderController
                 "totalActive", board.getTotalActiveCount()));
     }
 
+    @GetMapping("/list")
+    public TableDataInfo list(@RequestHeader("X-Shop-Id") Long shopId, BOrderQuery query)
+    {
+        var page = bOrderService.listOrders(shopId, query);
+        TableDataInfo result = new TableDataInfo(page.getRows(), page.getTotal());
+        result.setCode(HttpStatus.SUCCESS);
+        result.setMsg("查询成功");
+        return result;
+    }
+
     @GetMapping("/{id}/detail")
     public AjaxResult detail(@RequestHeader("X-Shop-Id") Long shopId, @PathVariable Long id)
     {
@@ -58,34 +70,40 @@ public class BOrderController
 
     @Log(title = "员工端开始制作", businessType = BusinessType.UPDATE)
     @PutMapping("/{id}/start-make")
-    public AjaxResult startMake(@RequestHeader("X-Shop-Id") Long shopId, @PathVariable Long id)
+    public AjaxResult startMake(HttpServletRequest servletRequest,
+            @RequestHeader("X-Shop-Id") Long shopId, @PathVariable Long id)
     {
-        bOrderService.startMake(shopId, id);
+        bOrderService.startMake(shopId, id, currentStaffId(servletRequest));
         return AjaxResult.success();
     }
 
     @Log(title = "员工端通知取餐", businessType = BusinessType.UPDATE)
     @PutMapping("/{id}/notify-pickup")
-    public AjaxResult notifyPickup(@RequestHeader("X-Shop-Id") Long shopId, @PathVariable Long id)
+    public AjaxResult notifyPickup(HttpServletRequest servletRequest,
+            @RequestHeader("X-Shop-Id") Long shopId, @PathVariable Long id)
     {
-        bOrderService.notifyPickup(shopId, id);
+        bOrderService.notifyPickup(shopId, id, currentStaffId(servletRequest));
         return AjaxResult.success();
     }
 
     @RateLimiter(key = "staff:order:scan-out:", time = 60, count = 10, limitType = LimitType.IP)
-    @Log(title = "员工端出餐兜底", businessType = BusinessType.UPDATE)
+    @Log(title = "员工端出餐兜底", businessType = BusinessType.UPDATE,
+            isSaveRequestData = false, isSaveResponseData = false)
     @PutMapping("/scan-out")
-    public AjaxResult scanOut(@RequestHeader("X-Shop-Id") Long shopId,
+    public AjaxResult scanOut(HttpServletRequest servletRequest,
+            @RequestHeader("X-Shop-Id") Long shopId,
             @Validated @RequestBody BOrderScanOutRequest request)
     {
-        return AjaxResult.success(bOrderService.scanOut(shopId, request.getEffectiveCode()));
+        return AjaxResult.success(bOrderService.scanOut(
+                shopId, request.getEffectiveCode(), currentStaffId(servletRequest)));
     }
 
     @Log(title = "员工端完成订单", businessType = BusinessType.UPDATE)
     @PutMapping("/{id}/complete")
-    public AjaxResult completeOrder(@RequestHeader("X-Shop-Id") Long shopId, @PathVariable Long id)
+    public AjaxResult completeOrder(HttpServletRequest servletRequest,
+            @RequestHeader("X-Shop-Id") Long shopId, @PathVariable Long id)
     {
-        bOrderService.completeOrder(shopId, id);
+        bOrderService.completeOrder(shopId, id, currentStaffId(servletRequest));
         return AjaxResult.success();
     }
 
